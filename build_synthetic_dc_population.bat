@@ -19,6 +19,6 @@ modules=opioid_addiction:dialysis:allergic_rhinitis:pregnancy:self_harm:atopy:as
 rm -r ../output
 
 echo "Building for $n patients"
-cd .. && ./run_synthea -p $n -s $s "District of Columbia" Washington -c syntheticMGUH/synthea.properties -m $modules ; cd -
+cd .. && ./run_synthea "District of Columbia" Washington -c syntheticMGUH/synthea.properties -m $modules -p $n -s $s; cd -
 
-cd syntheticMGUH
+#cd syntheticMGUH
