@@ -52,21 +52,24 @@ def main(uid, pwd, host, db, synthea_data_path, include_notes):
     index_columns = set(["id", "patient", "encounter", "provider",
                          "payer", "organization", "date", "start", "stop"])
     synthea_files = {
-        "organizations": [],
-        "providers": [],
-        "payers": [],
-        "patients": ["BIRTHDATE", "DEATHDATE"],
-        "encounters": ["START", "STOP"],
-        "payer_transitions": ["START_YEAR", "END_YEAR"],
         "allergies": ["START", "STOP"],
         "careplans": ["START", "STOP"],
+        "claims_transactions": ["FROMDATE", "TODATE"],
+        "claims": ["SERVICEDATE", "LASTBILLEDDATE1", 
+                   "LASTBILLEDDATE2","LASTBILLEDDATEP"],
         "conditions": ["START", "STOP"],
         "devices": ["START", "STOP"],
+        "encounters": ["START", "STOP"],
         "imaging_studies": ["DATE"],
         "immunizations": ["DATE"],
         "medications": ["START", "STOP"],
         "observations": ["DATE"],
-        "procedures": ["DATE"],
+        "organizations": [],
+        "patients": ["BIRTHDATE", "DEATHDATE"],
+        "payers": [],
+        "payer_transitions": ["START_YEAR", "END_YEAR"],
+        "procedures": ["START", "STOP"],
+        "providers": [],
         "supplies": ["DATE"]
     }
     print(f"importing from folder {synthea_data_path}")
@@ -138,6 +141,8 @@ def main(uid, pwd, host, db, synthea_data_path, include_notes):
 
     print("Adding indices")
     for file_name, date_fields in synthea_files.items():
+    
+        
         print(f"... indexing {file_name}")
 
         # Read the column names
@@ -146,11 +151,33 @@ def main(uid, pwd, host, db, synthea_data_path, include_notes):
         # Add indexes and foreign keys
         for column in index_columns.intersection(set(list(df))):
             if column == "id":
+                print(f"   ... dropping duplicates from {file_name}")
+                db_connection.execute(f"""
+                DELETE FROM {file_name}
+                WHERE ctid IN
+                (SELECT ctid
+                FROM
+                   (SELECT ctid, ROW_NUMBER() OVER (PARTITION BY id) AS rn
+                    FROM {file_name}) t
+                    WHERE rn > 1);""")
+            
+                print(f"  ... adding primary key for 'id'")
                 db_connection.execute(f"ALTER TABLE {file_name} ADD PRIMARY KEY (id)")
             else:
+                print(f"  ... adding index for '{column}'")
                 db_connection.execute(f"CREATE INDEX {file_name}_{column} ON {file_name} ({column})")
+
+    for file_name, date_fields in synthea_files.items():
+
+        # Read the column names
+        df = pd.read_sql(f"SELECT * FROM {file_name} LIMIT 1", db_connection)
+
+        # Add indexes and foreign keys
+        for column in index_columns.intersection(set(list(df))):
+                
             # These need to be done after the DDL is all execute, or added in order
             if column in foreign_keys:
+                print(f"... adding constraint for '{file_name}'")
                 fk_sql = f"""
                 ALTER TABLE {file_name} 
                     ADD CONSTRAINT FK_{file_name}_{column} 
@@ -165,9 +192,9 @@ if __name__ == '__main__':
     parser.add_argument('--uid', default = 'postgres')
     parser.add_argument('--pwd', default='')
     parser.add_argument('--host', default='localhost')
-    parser.add_argument('--db', default='synthea')
+    parser.add_argument('--db', default='syntheticMGUH')
     parser.add_argument('--path', default='../output')
-    parser.add_argument('--include_notes', action='store_const', const=True)
+    parser.add_argument('--include_notes', action='store_true', default = True)
     args = parser.parse_args()
 
     main(uid=args.uid,
