@@ -11,8 +11,6 @@ ALTER TABLE codes ADD PRIMARY KEY (vocab, code);
 -- Postgres specific due to glitch in synthea that codes have different descriptions
 -- we use the "DISTINCT ON" clause to take just the first code/description combo.
 
-
-
 INSERT INTO codes
 select distinct on (vocab, code) vocab, code, lower(description) as description from (
 SELECT DISTINCT 'SNOMED' as vocab, code::varchar(32), lower(description) as description
