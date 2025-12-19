@@ -1,0 +1,11 @@
+SUBJECTIVE:
+[Patient chief complaint and relevant history]
+
+OBJECTIVE:
+[Physical exam findings, vital signs, test results]
+
+ASSESSMENT:
+[Diagnosis and clinical impression]
+
+PLAN:
+[Treatment plan, medications, follow-up]

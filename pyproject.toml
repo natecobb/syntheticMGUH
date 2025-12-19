@@ -1,0 +1,19 @@
+[project]
+name = "syntheticmguh"
+version = "0.2.0"
+description = "Synthetic EHR data generation for MedStar Georgetown University Hospital using Synthea"
+requires-python = ">=3.13"
+dependencies = [
+    "duckdb>=1.1.0",
+    "pandas>=2.3.3",
+    "python-dateutil>=2.9.0.post0",
+    "requests>=2.32.5",
+]
+
+# Optional dependencies for legacy PostgreSQL workflow (deprecated)
+[project.optional-dependencies]
+postgresql = [
+    "d6tstack>=0.2.0",
+    "psycopg2-binary>=2.9.11",
+    "sqlalchemy>=2.0.45",
+]
