@@ -490,6 +490,32 @@ def main(
     total_codes = sum(count for _, count in vocab_counts)
     print(f"  {'TOTAL':15s}: {total_codes:,} codes")
 
+    # Map symptoms.pathology (SNOMED display text) to SNOMED code from codes table
+    if "symptoms" in loaded_table_names:
+        symptom_cols = {c[0].lower() for c in con.execute("DESCRIBE symptoms").fetchall()}
+        if "pathology" in symptom_cols and "code" not in symptom_cols:
+            print("\nMapping symptoms.pathology to SNOMED codes...")
+            con.execute("""
+                CREATE OR REPLACE TABLE symptoms AS
+                SELECT
+                    s.patient,
+                    s.gender,
+                    s.race,
+                    s.ethnicity,
+                    s.age_begin,
+                    s.age_end,
+                    TRY_CAST(c.code AS BIGINT) AS code,
+                    s.pathology,
+                    s.num_symptoms,
+                    s.symptoms
+                FROM symptoms s
+                LEFT JOIN (
+                    SELECT DISTINCT ON (description) description, code
+                    FROM codes
+                    WHERE vocab = 'SNOMED'
+                ) c ON LOWER(s.pathology) = c.description
+            """)
+
     # Drop description columns to save space (unless explicitly kept)
     if not keep_descriptions:
         print(f"\n{'='*60}")
@@ -510,7 +536,8 @@ def main(
             'imaging_studies': ['bodysite_description', 'modality_description', 'sop_description'],
             'medications': ['description', 'reasondescription'],
             'immunizations': ['description'],
-            'observations': ['description']
+            'observations': ['description'],
+            'symptoms': ['pathology', 'gender', 'race', 'ethnicity']
         }
 
         for table_name, columns_to_drop in tables_with_desc.items():

@@ -376,6 +376,7 @@ def test_code_normalization(
         ("procedures", "code", "SNOMED"),
         ("procedures", "reasoncode", "SNOMED"),
         ("supplies", "code", "SNOMED"),
+        ("symptoms", "code", "SNOMED"),
         ("imaging_studies", "bodysite_code", "SNOMED"),
         ("imaging_studies", "modality_code", "DICOM-DCM"),
         ("imaging_studies", "sop_code", "DICOM-SOP"),
@@ -436,6 +437,7 @@ def test_code_normalization(
             "medications": ["description", "reasondescription"],
             "immunizations": ["description"],
             "observations": ["description"],
+            "symptoms": ["pathology", "gender", "race", "ethnicity"],
         }
         for table, dropped_cols in expected_dropped.items():
             if table not in loaded_tables:
