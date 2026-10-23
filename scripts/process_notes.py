@@ -659,30 +659,30 @@ def main():
     # Parse mode arguments
     parser.add_argument(
         '--notes_dir',
-        default='../output/notes',
-        help='[parse] Directory containing patient note text files (default: ../output/notes)'
+        default='./output/notes',
+        help='[parse] Directory containing patient note text files (default: ./output/notes)'
     )
     parser.add_argument(
         '--parquet_dir',
-        default='../output/parquet',
-        help='[parse] Directory containing Parquet files with encounters (default: ../output/parquet)'
+        default='./output/parquet',
+        help='[parse] Directory containing Parquet files with encounters (default: ./output/parquet)'
     )
     parser.add_argument(
         '--output',
-        default='../output/parquet/notes.parquet',
-        help='[parse] Output path for notes.parquet (default: ../output/parquet/notes.parquet)'
+        default='./output/parquet/notes.parquet',
+        help='[parse] Output path for notes.parquet (default: ./output/parquet/notes.parquet)'
     )
 
     # Transform mode arguments
     parser.add_argument(
         '--notes_parquet',
-        default='../output/parquet/notes.parquet',
-        help='[transform] Input notes.parquet file (default: ../output/parquet/notes.parquet)'
+        default='./output/parquet/notes.parquet',
+        help='[transform] Input notes.parquet file (default: ./output/parquet/notes.parquet)'
     )
     parser.add_argument(
         '--output_parquet',
-        default='../output/parquet/notes_llm.parquet',
-        help='[transform] Output notes_llm.parquet file (default: ../output/parquet/notes_llm.parquet)'
+        default='./output/parquet/notes_llm.parquet',
+        help='[transform] Output notes_llm.parquet file (default: ./output/parquet/notes_llm.parquet)'
     )
     parser.add_argument(
         '--model',

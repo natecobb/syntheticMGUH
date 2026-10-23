@@ -1,63 +1,79 @@
-# Synthentic MGUH
+# Synthetic MGUH
 
-This is a series of scripts to build a synthetic Medstar Georgetown Hospital EHR data set. This data set is composed of 17 linked tables covering, patients (patients, care plans, conditions and coverage), encounters (notes, observations, medications, immunizations, procedures, suppolies, imaging and devices), payers and providers. The included scripts generate a Medstar/DC specific database and load it into a relational database with indexing. Portions can optionally be converted into OMOP format.
-   
-The underlying open source generator [Synthea](https://github.com/synthetichealth/synthea) was designed to create what  would approximate a Massachusetts exchange database, so generates state or city based data sets. It is possible to merge multiple runs, but all patients within a given run will be associated with hospitals/providers in that city/state. So there isn't a lot of reason to do so (we would not get patients from Arlington, VA visiting MGUH)
+This repository contains scripts to build a synthetic MedStar Georgetown University Hospital (MGUH) EHR dataset using [Synthea](https://github.com/synthetichealth/synthea) v4.0+. The dataset consists of linked clinical, demographic, provider, and financial tables exported as ZSTD-compressed Parquet files (with an automatically generated `codes.parquet` lookup dictionary) ready for DuckDB or Databricks Unity Catalog.
+
+## Overview & Revisions
+
+- **2026 Revision (Synthea 4.0+ & Standalone Layout)**:
+  - **Standalone Repository**: `syntheticMGUH` no longer needs to be nested inside a Synthea source checkout. `./0_setup_synthea.sh` builds/installs `bin/synthea-with-dependencies.jar` (and unpacks `bin/resources/physiology/`), and `1_build_providers.py` extracts base provider CSVs directly from the JAR into `./providers/syntheticMGUH/`.
+  - **Synthea 4.0+ (`master`, Gradle 9, Java 17+)**: Includes `NPI` columns in `organizations` and `providers`, fixes `1970-01-01` unset stop timestamps in CSV exports, fixes SSN/Passport/Driver's License uniqueness collisions at population scale, and disables orphan QALY/DALY/QOLS rows via `exporter.csv.include_quality_of_life_observations = false`.
+  - Restores NPI-based DC/MedStar provider filtering (`1_build_providers.py`) and parameterized history generation (`2_generate_data.bat`) alongside the DuckDB/Parquet conversion (`3_convert_to_parquet.py`) and Databricks sync (`4_sync_to_databricks.sh`) workflow.
+- **2025 Revision**:
+  - Replaced legacy PostgreSQL workflow with a 10x faster serverless DuckDB → Parquet pipeline and Databricks Unity Catalog sync.
+  - Automatically builds `codes.parquet` and drops redundant description columns from clinical tables (saving 30–50% storage).
+- **2023 Revision**:
+  - Trims encounter/operational data prior to the simulated EHR launch date (`2010-01-01`) while retaining historical records (allergies, conditions, etc.) linked to the patient's first EHR encounter.
+  - NPI-based provider filtering including MGUH (`1427145176`), MWHC (`1548378235`), National Rehabilitation Hospital (`1326496456`), Bridgepoint (`1285772772` / `1205923604`), MedStar Health VNA (`1407960248`), and MedStar PromptCare urgent care locations.
 
 ## Installation
- * Download the Synthea source from github
-   * v3.0 tag (12/9/2021)
- * Build Synthea
-   * Easiest to just first ./run_synthea which will build and execute a test run_
- * Drop this folder into your download Synthea source directory.
- 
-## SyntheticMGUH Build Process
 
-From within the syntheticMGUH directory, follow the following process. Note that the defaults for each script will build a data set of 10,000 patients all in DC, with MGUH as the only hospital. The inclusion of `notes` is optional.
- * execute `pip3 install -r requirements.txt` (or the equivalent with your environment manager)
- * Create DC/Medstar specific provider files with `python3 build_provider_files.py`
-   * If you want to include WHC use the `--hospitals both` flag
- * Create a Synthea data set as CSV files with `./build_synthetic_dc_population.bat`
- * Load to a relational database wth `python3 load_csv_to_rdbms.py --include_notes`
- * Optionally, covert to OMOP with `./OMOP/convert_to_omop_postgres.bat`
-   * To do this you first need to download the CDM vocabulary files from Athena, see the script for details.
-   * This will delete the raw Synthea tables afterwards.
+Requires **Java 17+** and **uv** (Python 3.13+):
+
+```bash
+git clone https://github.com/natecobb/syntheticMGUH
+cd syntheticMGUH
+uv sync
+./0_setup_synthea.sh
+```
+
+## 4-Step Build Pipeline
+
+Run all steps from within the `syntheticMGUH/` directory:
+
+1. **Build DC/MedStar provider files**:
+   ```bash
+   uv run python 1_build_providers.py --hospitals MGUH  # or 'both', 'WHC'
+   ```
+2. **Generate synthetic population CSVs with Synthea**:
+   - **Iterative, crash-recoverable batch mode (recommended for large populations)**:
+     Generates, merges into Parquet, checkpoints (`output/parquet/_checkpoint.json`), and deletes raw CSV/note files every `X` patients:
+     ```bash
+     uv run python 2_generate_incremental.py --total 5000 --batch_size 250 --seed 12345 --years 14
+     # Or pass batch_size as 4th argument to 2_generate_data.bat:
+     ./2_generate_data.bat 5000 12345 14 250
+     ```
+   - **Single-shot mode**:
+     ```bash
+     ./2_generate_data.bat 500 12345 14
+     ```
+     *(Arguments: `<num_patients>` `<seed>` `<years_of_history>` `[batch_size]`)*
+3. **Convert CSVs to Parquet & build code dictionary** *(automatic in batch mode)*:
+   ```bash
+   uv run python 3_convert_to_parquet.py --include_notes --cleanup
+   ```
+   *(Add `--cleanup` to delete raw `output/csv` and `output/notes` after conversion; add `--keep_descriptions` to retain text description columns alongside `codes.parquet`.)*
+4. **Validate Parquet output (optional)**:
+   ```bash
+   uv run python scripts/test_parquet_load.py
+   ```
+5. **Sync Parquet files to Databricks Unity Catalog (optional)**:
+   ```bash
+   ./4_sync_to_databricks.sh
+   ```
 
 ## Stock Synthea Modifications
 
-### Build batch file
-- Executes all modules *except* veterans modules (as of 9/17/2020)
+### Provider Files (`1_build_providers.py`)
+- Filters hospitals by NPI to MGUH (`1427145176`) and optionally MWHC (`1548378235`)
+- Includes MedStar DC primary care clinics (`1417571530` One MedStar Primary Care, `1285636522` MedStar Georgetown Medical Center, `1922395581` MMG Georgetown Family Practice, `1194374710` GUH-Kids Mobile Medical Clinic)
+- Configures Bridgepoint for long-term/SNF, MGUH for inpatient hospice, MGUH/MWHC for dialysis, National Rehab for rehabilitation, and MedStar VNA for home health
+- Routes veteran care to MedStar hospitals via an empty `va_facilities.csv` override (`generate.providers.default_to_hospital_on_failure = true`)
+- Adds MedStar PromptCare urgent care locations (Adams Morgan and Capitol Hill)
 
-### Provider files
-* Eliminates all hospitals but MGUH and optionally WHC
-* Adds the Medstar Promptcare locations
-* Trims the files to DC only and fixes some bad address issues
-
-### Properties File
-- output is CSV only; FHIR is disabled due to size
-- sets the year that individual mandate went into force as 2014 (default is 2006 for Massachusetts)
-- 12 years of EHR data is exported, this approximately matches when MGUH converted to Cerner
-- death by natural causes is enabled
-- clinical notes export is on
-- death_by_natural_causes is on
-- physiology generators are on
-- symptom export is on
-- append_numbers_to_person_names is off
-
-### COVID-19 Module
-
-* With version 3.0 of Synthea we no longer need to build our own COVID tables
-
-### Codes
-
-Synthea data is primarily de-normalized in the sense that keys/codes and text strings are both present in each table where a lookup would normally be performed. In `SQL` director is a script `normalize_codes.sql` which will build a code dictionary table called `codes`.
-
-TODO - additional script to fully normalize the existing tables (eg drop redundant text columns.)
- 
-### OMOP
-
-** This is currently broken. The old SQL script doesn't run successfully. The OHDSI scripts have been updated and improved but are based on the 2.7 data format for Synthea. **
-
-* The `convert_omop_postgres.bat` script in the OMOP directory will transform the raw Synthea tables (using SQL) into a limited OMOP format. Several tables are missing such as providers. The script was adapted from open source code in the Synthea-OMOP repo, and has been tidied and fixed. Unfortunately it is Postgres only. 
-* The [OHDSI github repo]https://github.com/OHDSI/ETL-Synthea) has R code that may work against SQL Server as well, but I did not test this.  
-
+### Properties File (`synthea.properties`)
+- CSV-only export (`exporter.fhir.export = false`, `exporter.csv.export = true`)
+- Excludes quality-of-life orphan observations (`exporter.csv.include_quality_of_life_observations = false`)
+- Sets ACA individual mandate year to `2014` (`generate.insurance.mandate.year = 2014`)
+- Exports clinical notes (`exporter.clinical_note.export = true`) and symptoms (`exporter.symptoms.csv.export = true`)
+- Enables physiology generators (`physiology.generators.enabled = true`, `physiology.state.enabled = true`) and death by natural causes (`lifecycle.death_by_natural_causes = true`)
+- Disables numeric suffixes on person names (`generate.append_numbers_to_person_names = false`)

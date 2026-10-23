@@ -3,7 +3,13 @@
 
 set -e
 
-PARQUET_DIR="../output/parquet"
+if [ -n "$1" ] && [ -d "./output/seed_$1/parquet" ]; then
+    PARQUET_DIR="./output/seed_$1/parquet"
+elif [ -n "$1" ]; then
+    PARQUET_DIR="$1"
+else
+    PARQUET_DIR="./output/parquet"
+fi
 DATABRICKS_PATH="dbfs:/Volumes/mi2/i2l_syntheticmguh/raw/parquet"
 
 echo "Syncing Parquet files to Databricks..."

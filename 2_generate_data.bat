@@ -1,24 +1,37 @@
 #!/bin/bash
 
-# Sample size defaults to 10,000 living patients
+# Sample size defaults to 500 living patients
 # MGUH saw about 90,000 patients in 2019 and 145,000 over 2018/2019
+set -e
+
 n=${1:-500}
 s=${2:-12345}
+y=${3:-14}
+b=${4:-}
 
-modules=opioid_addiction:dialysis:allergic_rhinitis:pregnancy:self_harm:atopy:asthma:covid19:ear_infections:sinusitis:dementia:mTBI:anemia___unknown_etiology:urinary_tract_infections:hypothyroidism:osteoarthritis:appendicitis:copd:contraceptive_maintenance:fibromyalgia:total_joint_replacement:sore_throat:rheumatoid_arthritis:gallstones:bronchitis:sexual_activity:homelessness:epilepsy:wellness_encounters:injuries:colorectal_cancer:med_rec:congestive_heart_failure:lung_cancer:contraceptives:osteoporosis:breast_cancer:female_reproduction:gout:metabolic_syndrome_disease:allergies:metabolic_syndrome_care:lupus:cystic_fibrosis:dermatitis:food_allergies:hypertension
+# If a 4th argument (batch_size) is provided, run the iterative, recoverable batch pipeline
+if [ -n "$b" ]; then
+    exec uv run python 2_generate_incremental.py --total "$n" --seed "$s" --years "$y" --batch_size "$b"
+fi
 
-# Should also build our needed lookup tables
-# python3 covid_historic_timeline.py ....
+SYNTHEA_JAR="${SYNTHEA_JAR:-bin/synthea-with-dependencies.jar}"
 
-# Synthea has to be run from its own directory
-# cd ..
-# pushd ...
-# popd
+if [ ! -f "$SYNTHEA_JAR" ] || [ ! -d "bin/resources/physiology" ]; then
+    echo "Synthea runtime not initialized in ./bin — running ./0_setup_synthea.sh..."
+    ./0_setup_synthea.sh
+fi
 
-# Delete the output directory if it exists
-rm -r ../output
+# Delete only this seed's output directory if it exists
+SEED_DIR="./output/seed_${s}"
+rm -rf "$SEED_DIR"
+mkdir -p "$SEED_DIR"
+ln -sfn "seed_${s}" ./output/latest
 
-echo "Building for $n patients"
-cd .. && ./run_synthea "District of Columbia" Washington -c syntheticMGUH/synthea.properties -m $modules -p $n -s $s; cd -
-
-#cd syntheticMGUH
+echo "Building for $n patients (seed=$s, years_of_history=$y) -> $SEED_DIR"
+java -cp ".:bin/resources:$SYNTHEA_JAR" App "District of Columbia" Washington \
+    -c synthea.properties \
+    -p "$n" \
+    -s "$s" \
+    -cs "$s" \
+    --exporter.baseDirectory="${SEED_DIR}/" \
+    --exporter.years_of_history="$y"

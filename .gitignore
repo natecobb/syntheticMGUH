@@ -3,3 +3,8 @@
 /.Rproj.user/
 /.idea
 /.venv
+/bin/
+/providers/
+/output/
+.DS_Store
+__pycache__/
