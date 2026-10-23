@@ -86,6 +86,7 @@ def main(
     include_notes: bool = True,
     keep_descriptions: bool = False,
     no_claims: bool = False,
+    threads: int = 10,
     reset: bool = False,
 ) -> int:
     repo_root = Path(__file__).resolve().parent
@@ -167,6 +168,7 @@ def main(
     print(f"{'='*60}")
     print(f"Target population: {total_patients:,} patients ({num_batches} batches of up to {batch_size:,})")
     print(f"Base seed:         {seed} (Clinician seed: {clinician_seed})")
+    print(f"CPU threads:       {threads} (Synthea + DuckDB)")
     print(f"Years of history:  {years_of_history} (EHR launch filter: {ehr_launch_date.date()})")
     print(f"Clinical notes:    {'enabled' if include_notes else 'disabled'}")
     print(f"Parquet output:    {parquet_path.resolve()}")
@@ -205,6 +207,7 @@ def main(
         )
         cmd = [
             "java",
+            "-Xmx8g",
             "-cp",
             classpath,
             "App",
@@ -220,6 +223,7 @@ def main(
             str(clinician_seed),
             "-r",
             reference_date,
+            f"--generate.thread_pool_size={threads}",
             f"--exporter.baseDirectory={output_path}/",
             f"--exporter.years_of_history={years_of_history}",
             f"--exporter.clinical_note.export={'true' if include_notes else 'false'}",
@@ -239,6 +243,7 @@ def main(
             append=has_prior_batches,
             cleanup=True,
             no_claims=no_claims,
+            threads=threads,
         )
 
         # 4. Record batch checkpoint atomically
@@ -355,6 +360,12 @@ if __name__ == "__main__":
         help="Exclude claims.csv and claims_transactions.csv (~66%% smaller raw CSV, ~78%% smaller Parquet)",
     )
     parser.add_argument(
+        "-t", "--threads",
+        type=int,
+        default=10,
+        help="Max CPU threads/cores to use for Synthea and DuckDB (default: 10)",
+    )
+    parser.add_argument(
         "--reset",
         action="store_true",
         default=False,
@@ -374,6 +385,7 @@ if __name__ == "__main__":
             include_notes=not args.no_notes,
             keep_descriptions=args.keep_descriptions,
             no_claims=args.no_claims,
+            threads=args.threads,
             reset=args.reset,
         )
     )

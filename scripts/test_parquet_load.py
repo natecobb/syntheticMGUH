@@ -174,20 +174,21 @@ def test_synthea_4_features(con: duckdb.DuckDBPyConnection, loaded_tables: set[s
             else:
                 results.add_fail(f"Synthea 4.0 '{table}.npi' column missing", "Expected NPI column from Synthea 4.0+")
 
-    # 2. No 1970-01-01 unset stop dates
+    # 2. No 1970-01-01 00:00:00 unset epoch stop dates
     tables_with_stop = ["allergies", "careplans", "conditions", "devices", "encounters", "medications", "procedures"]
     epoch_bugs = 0
     for table in tables_with_stop:
         if table in loaded_tables:
             cnt = con.execute(f"""
                 SELECT COUNT(*) FROM {table}
-                WHERE stop IS NOT NULL AND EXTRACT(YEAR FROM stop) <= 1970
+                WHERE stop = '1970-01-01 00:00:00+00'::TIMESTAMPTZ
+                   OR stop = timezone('America/New_York', TIMESTAMP '1970-01-01 00:00:00')
             """).fetchone()[0]
             epoch_bugs += cnt
     if epoch_bugs == 0:
-        results.add_pass("No unset 1970-01-01 epoch stop timestamps across clinical tables")
+        results.add_pass("No unset 1970-01-01 00:00:00 epoch stop timestamps across clinical tables")
     else:
-        results.add_fail("Found 1970-01-01 stop timestamps", f"{epoch_bugs} rows have 1970 stop dates")
+        results.add_fail("Found 1970-01-01 00:00:00 stop timestamps", f"{epoch_bugs} rows have 1970-01-01 epoch stop dates")
 
     # 3. No orphan QALY/DALY/QOLS observations
     if "observations" in loaded_tables:

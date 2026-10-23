@@ -43,7 +43,8 @@ def main(
     duckdb_path=None,  # None = in-memory, or provide path for persistent DB
     append=False,      # Merge with existing Parquet files in output_path
     cleanup=False,     # Delete raw csv/notes/symptoms/metadata after Parquet export
-    no_claims=False    # Skip claims and claims_transactions tables
+    no_claims=False,   # Skip claims and claims_transactions tables
+    threads=10         # Number of CPU threads for DuckDB
 ):
     """
     Load Synthea CSVs into DuckDB and export to Parquet format.
@@ -135,9 +136,9 @@ def main(
     # Connect to DuckDB
     con = duckdb.connect(duckdb_path if duckdb_path else ':memory:')
 
-    # Set DuckDB to use multiple threads and configure memory
-    con.execute("SET threads TO 4")
-    con.execute("SET memory_limit = '4GB'")
+    # Set DuckDB to use configured threads and memory
+    con.execute(f"SET threads TO {int(threads)}")
+    con.execute("SET memory_limit = '8GB'")
 
     print("\n" + "="*60)
     print("LOADING CSV FILES")
@@ -271,13 +272,27 @@ def main(
             notes_files = sorted(f for f in notes_path.iterdir() if f.suffix == '.txt')
             print(f"Processing {len(notes_files)} note files...")
 
-            if ehr_launch_date.tzinfo is None:
-                ehr_launch_date = ehr_launch_date.replace(tzinfo=timezone.utc)
+            launch_date_prefix = ehr_launch_date.strftime("%Y-%m-%d")
+
+            def _flush_notes(rows):
+                if not rows:
+                    return
+                notes_df = pd.DataFrame(rows, columns=["patient", "note_date", "note_text"])
+                con.execute("""
+                    INSERT INTO notes (patient, date, note_text, encounter)
+                    SELECT patient,
+                           timezone('America/New_York', TRY_CAST(note_date AS TIMESTAMP)),
+                           note_text,
+                           NULL
+                    FROM notes_df
+                """)
 
             note_rows = []
             for i, file_path in enumerate(notes_files, 1):
-                if i % 100 == 0:
+                if i % 250 == 0:
                     print(f"  Processed {i}/{len(notes_files)} files...")
+                    _flush_notes(note_rows)
+                    note_rows = []
 
                 patient_match = re.search(regex_id, file_path.name)
                 if not patient_match:
@@ -289,45 +304,40 @@ def main(
 
                 for note_date, note_text in notes:
                     note_date = note_date.strip()
+                    if note_date[:10] < launch_date_prefix:
+                        continue
                     note_text = note_text.strip()
                     if not note_text:
                         continue
-                    # Filter notes by EHR launch date
-                    note_dt = date_parser.parse(note_date)
-                    if note_dt.tzinfo is None:
-                        note_dt = note_dt.replace(tzinfo=timezone.utc)
-                    if note_dt < ehr_launch_date:
-                        continue
-
                     note_rows.append((patient_id, note_date, note_text))
 
-            if note_rows:
-                notes_df = pd.DataFrame(note_rows, columns=["patient", "note_date", "note_text"])
+            _flush_notes(note_rows)
+            note_rows = []
+
+            raw_note_count = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
+            if raw_note_count > 0:
+                print(f"  Associating {raw_note_count:,} notes with encounters...")
                 con.execute("""
-                    INSERT INTO notes (patient, date, note_text, encounter)
-                    SELECT patient,
-                           timezone('America/New_York', TRY_CAST(note_date AS TIMESTAMP)),
-                           note_text,
-                           NULL
-                    FROM notes_df
+                    CREATE OR REPLACE TABLE notes AS
+                    SELECT
+                        n.patient,
+                        n.date,
+                        n.note_text,
+                        e.id AS encounter
+                    FROM (SELECT rowid AS note_id, * FROM notes) n
+                    JOIN encounters e
+                      ON e.patient = n.patient
+                     AND CAST(n.date AS DATE) BETWEEN CAST(e.start AS DATE)
+                         AND COALESCE(CAST(e.stop AS DATE), CAST(n.date AS DATE))
+                    QUALIFY ROW_NUMBER() OVER (
+                        PARTITION BY n.note_id
+                        ORDER BY ABS(EPOCH(n.date) - EPOCH(e.start)) ASC
+                    ) = 1
                 """)
-                print("  Associating notes with encounters...")
-                con.execute("""
-                    UPDATE notes
-                    SET encounter = (
-                        SELECT e.id
-                        FROM encounters e
-                        WHERE e.patient = notes.patient
-                          AND CAST(notes.date AS DATE) BETWEEN CAST(e.start AS DATE)
-                              AND COALESCE(CAST(e.stop AS DATE), CAST(notes.date AS DATE))
-                        ORDER BY ABS(EPOCH(notes.date) - EPOCH(e.start)) ASC
-                        LIMIT 1
-                    )
-                """)
-                unmatched = con.execute("SELECT COUNT(*) FROM notes WHERE encounter IS NULL").fetchone()[0]
+                matched_count = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
+                unmatched = raw_note_count - matched_count
                 if unmatched > 0:
-                    print(f"  Removing {unmatched:,} notes without matching encounter...")
-                    con.execute("DELETE FROM notes WHERE encounter IS NULL")
+                    print(f"  Removed {unmatched:,} notes without matching encounter")
 
             note_count = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
             print(f"  ✓ Loaded {note_count:,} clinical notes linked to encounters")
@@ -344,13 +354,13 @@ def main(
         ALTER TABLE patients ADD COLUMN IF NOT EXISTS first_encounter_id VARCHAR;
 
         UPDATE patients
-        SET first_encounter_id = (
-            SELECT id
+        SET first_encounter_id = fe.id
+        FROM (
+            SELECT DISTINCT ON (patient) patient, id
             FROM encounters
-            WHERE encounters.patient = patients.id
-            ORDER BY start ASC
-            LIMIT 1
-        )
+            ORDER BY patient, start ASC
+        ) fe
+        WHERE patients.id = fe.patient
     """)
 
     # Fix orphaned encounters in certain tables
@@ -362,13 +372,11 @@ def main(
             print(f"  {table}...")
             con.execute(f"""
                 UPDATE {table}
-                SET encounter = (
-                    SELECT first_encounter_id
-                    FROM patients
-                    WHERE patients.id = {table}.patient
-                )
-                WHERE encounter NOT IN (SELECT id FROM encounters)
-                  AND encounter IS NOT NULL
+                SET encounter = p.first_encounter_id
+                FROM patients p
+                WHERE {table}.patient = p.id
+                  AND {table}.encounter IS NOT NULL
+                  AND {table}.encounter NOT IN (SELECT id FROM encounters)
             """)
 
     # Clean tables by removing rows without valid encounters
@@ -858,6 +866,8 @@ if __name__ == '__main__':
                        help='Delete raw csv/, notes/, symptoms/, and metadata/ directories after export')
     parser.add_argument('--no_claims', action='store_true', default=False,
                        help='Skip claims and claims_transactions tables to reduce storage footprint')
+    parser.add_argument('-t', '--threads', type=int, default=10,
+                       help='Number of CPU threads for DuckDB (default: 10)')
 
     args = parser.parse_args()
     if args.seed is not None:
@@ -875,5 +885,6 @@ if __name__ == '__main__':
         duckdb_path=args.duckdb,
         append=args.append,
         cleanup=args.cleanup,
-        no_claims=args.no_claims
+        no_claims=args.no_claims,
+        threads=args.threads
     )
