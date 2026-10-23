@@ -85,6 +85,7 @@ def main(
     ehr_launch_date: datetime = date_parser.parse("2010-01-01 00:00:00Z"),
     include_notes: bool = True,
     keep_descriptions: bool = False,
+    no_claims: bool = False,
     reset: bool = False,
 ) -> int:
     repo_root = Path(__file__).resolve().parent
@@ -197,6 +198,11 @@ def main(
         # 2. Run Synthea for this batch
         # NOTE: -c ./synthea.properties MUST come before -p/-s/-cs/-r so CLI flags override properties!
         classpath = f".:bin/resources:{jar_path}"
+        excluded_csvs = (
+            "patient_expenses.csv,claims.csv,claims_transactions.csv"
+            if no_claims
+            else "patient_expenses.csv"
+        )
         cmd = [
             "java",
             "-cp",
@@ -217,6 +223,7 @@ def main(
             f"--exporter.baseDirectory={output_path}/",
             f"--exporter.years_of_history={years_of_history}",
             f"--exporter.clinical_note.export={'true' if include_notes else 'false'}",
+            f"--exporter.csv.excluded_files={excluded_csvs}",
         ]
 
         subprocess.run(cmd, cwd=repo_root, check=True)
@@ -231,6 +238,7 @@ def main(
             keep_descriptions=keep_descriptions,
             append=has_prior_batches,
             cleanup=True,
+            no_claims=no_claims,
         )
 
         # 4. Record batch checkpoint atomically
@@ -341,6 +349,12 @@ if __name__ == "__main__":
         help="Keep redundant text description columns in Parquet tables",
     )
     parser.add_argument(
+        "--no_claims",
+        action="store_true",
+        default=False,
+        help="Exclude claims.csv and claims_transactions.csv (~66%% smaller raw CSV, ~78%% smaller Parquet)",
+    )
+    parser.add_argument(
         "--reset",
         action="store_true",
         default=False,
@@ -359,6 +373,7 @@ if __name__ == "__main__":
             ehr_launch_date=args.start,
             include_notes=not args.no_notes,
             keep_descriptions=args.keep_descriptions,
+            no_claims=args.no_claims,
             reset=args.reset,
         )
     )

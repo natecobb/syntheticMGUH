@@ -66,9 +66,10 @@ uv run python 1_build_providers.py --hospitals MGUH  # or 'both', 'WHC'
 Main data processing script that:
 - Loads Synthea CSV output (plus `output/symptoms/csv/symptoms.csv`) using DuckDB
 - Performs data transformations (encounter fixes, date filtering)
-- **Builds normalized code dictionary** (`codes.parquet`) covering primary `code` columns, `reasoncode` (`encounters`, `careplans`, `medications`, `procedures`), and allergy `reaction1`/`reaction2`
-- **Drops redundant description columns** (`description`, `reasondescription`, `description1`, `description2`, `bodysite_description`, `modality_description`, `sop_description`)
-- Exports all tables to Parquet format with ZSTD compression
+- **Builds normalized code dictionary** (`codes.parquet`) covering primary `code` columns, `reasoncode` (`encounters`, `careplans`, `medications`, `procedures`), allergy `reaction1`/`reaction2`, and `claims_transactions.procedurecode`
+- **Drops redundant description columns** (`description`, `reasondescription`, `description1`, `description2`, `bodysite_description`, `modality_description`, `sop_description`, and `claims_transactions.notes`)
+- Exports all tables to Parquet format with ZSTD compression and patient/date clustering sort order
+- Supports `--no_claims` to exclude `claims` and `claims_transactions` when billing tables are not needed (~78% smaller Parquet footprint)
 - Optionally processes clinical notes and links each note to `encounters.id` (`notes.encounter`)
 - Supports EHR launch date filtering (default: 2010-01-01)
 

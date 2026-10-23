@@ -36,9 +36,10 @@ Run all steps from within the `syntheticMGUH/` directory:
    ```
 2. **Generate synthetic population CSVs with Synthea**:
    - **Iterative, crash-recoverable batch mode (recommended for large populations)**:
-     Generates, merges into Parquet, checkpoints (`output/parquet/_checkpoint.json`), and deletes raw CSV/note files every `X` patients:
+     Generates, merges into Parquet, checkpoints (`output/seed_<seed>/parquet/_checkpoint.json`), and deletes raw CSV/note files every `X` patients:
      ```bash
      uv run python 2_generate_incremental.py --total 5000 --batch_size 250 --seed 12345 --years 14
+     # Optional: pass --no_claims to skip claims/claims_transactions (~78% smaller Parquet)
      # Or pass batch_size as 4th argument to 2_generate_data.bat:
      ./2_generate_data.bat 5000 12345 14 250
      ```

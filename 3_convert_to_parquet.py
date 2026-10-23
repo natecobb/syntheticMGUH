@@ -42,7 +42,8 @@ def main(
     keep_descriptions=False,
     duckdb_path=None,  # None = in-memory, or provide path for persistent DB
     append=False,      # Merge with existing Parquet files in output_path
-    cleanup=False      # Delete raw csv/notes/symptoms/metadata after Parquet export
+    cleanup=False,     # Delete raw csv/notes/symptoms/metadata after Parquet export
+    no_claims=False    # Skip claims and claims_transactions tables
 ):
     """
     Load Synthea CSVs into DuckDB and export to Parquet format.
@@ -105,6 +106,9 @@ def main(
         "providers": [],
         "supplies": ["DATE"]
     }
+    if no_claims:
+        synthea_tables.pop("claims", None)
+        synthea_tables.pop("claims_transactions", None)
 
     # Tables to filter by date (to simulate EHR launch)
     # Synthea keeps encounters cascading from active careplans, creating enormous datasets
@@ -380,6 +384,22 @@ def main(
                   AND encounter NOT IN (SELECT id FROM encounters)
             """)
 
+    # Clean claims and claims_transactions referencing filtered-out encounters
+    if con.execute("SELECT table_name FROM information_schema.tables WHERE table_name = 'claims'").fetchone():
+        print("  claims...")
+        con.execute("""
+            DELETE FROM claims
+            WHERE appointmentid IS NOT NULL
+              AND appointmentid NOT IN (SELECT id FROM encounters)
+        """)
+    if con.execute("SELECT table_name FROM information_schema.tables WHERE table_name = 'claims_transactions'").fetchone():
+        print("  claims_transactions...")
+        con.execute("""
+            DELETE FROM claims_transactions
+            WHERE (appointmentid IS NOT NULL AND appointmentid NOT IN (SELECT id FROM encounters))
+               OR (claimid IS NOT NULL AND claimid NOT IN (SELECT id FROM claims))
+        """)
+
     # Drop orphan observations (Synthea glitch)
     print("Dropping orphan observations...")
     con.execute("""
@@ -441,6 +461,20 @@ def main(
         ORDER BY vocab, code
     """)
 
+    # Ensure any procedurecode in claims_transactions not already in codes is captured before dropping notes
+    if "claims_transactions" in loaded_table_names:
+        con.execute("""
+            INSERT INTO codes
+            SELECT DISTINCT ON (code)
+                'SNOMED' AS vocab,
+                CAST(ct.procedurecode AS VARCHAR) AS code,
+                LOWER(ct.notes) AS description
+            FROM claims_transactions ct
+            WHERE ct.procedurecode IS NOT NULL
+              AND ct.notes IS NOT NULL
+              AND CAST(ct.procedurecode AS VARCHAR) NOT IN (SELECT code FROM codes)
+        """)
+
     # Show code dictionary stats
     vocab_counts = con.execute("""
         SELECT vocab, COUNT(*) AS count
@@ -467,6 +501,7 @@ def main(
         tables_with_desc = {
             'allergies': ['description', 'description1', 'description2'],
             'careplans': ['description', 'reasondescription'],
+            'claims_transactions': ['notes'],
             'conditions': ['description'],
             'devices': ['description'],
             'encounters': ['description', 'reasondescription'],
@@ -700,12 +735,24 @@ def main(
     ).fetchall()
 
     staged_files = []
+    # Optional sort keys to cluster rows by patient/claim before ZSTD Parquet compression
+    sort_orders = {
+        "claims_transactions": "ORDER BY patientid, claimid, chargeid",
+        "claims": "ORDER BY patientid, servicedate, id",
+        "encounters": "ORDER BY patient, start, id",
+        "observations": "ORDER BY patient, encounter, date",
+        "procedures": "ORDER BY patient, encounter, start",
+        "medications": "ORDER BY patient, start",
+        "conditions": "ORDER BY patient, start",
+        "notes": "ORDER BY patient, date",
+    }
     for (table_name,) in tables:
         parquet_file = output_path / f"{table_name}.parquet"
         tmp_file = output_path / f".tmp_{table_name}.parquet"
+        order_clause = sort_orders.get(table_name, "")
 
         con.execute(f"""
-            COPY {table_name}
+            COPY (SELECT * FROM {table_name} {order_clause})
             TO '{tmp_file}'
             (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 100000)
         """)
@@ -782,6 +829,8 @@ if __name__ == '__main__':
                        help='Merge new batch with existing Parquet files in output directory')
     parser.add_argument('--cleanup', action='store_true', default=False,
                        help='Delete raw csv/, notes/, symptoms/, and metadata/ directories after export')
+    parser.add_argument('--no_claims', action='store_true', default=False,
+                       help='Skip claims and claims_transactions tables to reduce storage footprint')
 
     args = parser.parse_args()
     if args.seed is not None:
@@ -798,5 +847,6 @@ if __name__ == '__main__':
         keep_descriptions=args.keep_descriptions,
         duckdb_path=args.duckdb,
         append=args.append,
-        cleanup=args.cleanup
+        cleanup=args.cleanup,
+        no_claims=args.no_claims
     )

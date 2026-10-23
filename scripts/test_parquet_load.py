@@ -81,12 +81,13 @@ def test_tables_exist(loaded_tables: set[str], results: TestResults):
     print(f"{'='*60}")
 
     expected_tables = [
-        "allergies", "careplans", "claims", "claims_transactions",
-        "codes", "conditions", "devices", "encounters", "imaging_studies",
-        "immunizations", "medications", "observations", "organizations",
-        "patients", "payers", "payer_transitions", "procedures",
-        "providers", "supplies", "symptoms"
+        "allergies", "careplans", "codes", "conditions", "devices",
+        "encounters", "imaging_studies", "immunizations", "medications",
+        "observations", "organizations", "patients", "payers",
+        "payer_transitions", "procedures", "providers", "supplies", "symptoms"
     ]
+    if "claims" in loaded_tables or "claims_transactions" in loaded_tables:
+        expected_tables.extend(["claims", "claims_transactions"])
 
     for table in expected_tables:
         if table in loaded_tables:
@@ -302,6 +303,13 @@ def test_referential_integrity(con: duckdb.DuckDBPyConnection, loaded_tables: se
         ("allergies", "encounter", "encounters", "id"),
         ("careplans", "patient", "patients", "id"),
         ("careplans", "encounter", "encounters", "id"),
+        ("claims", "patientid", "patients", "id"),
+        ("claims", "providerid", "providers", "id"),
+        ("claims", "appointmentid", "encounters", "id"),
+        ("claims_transactions", "claimid", "claims", "id"),
+        ("claims_transactions", "patientid", "patients", "id"),
+        ("claims_transactions", "providerid", "providers", "id"),
+        ("claims_transactions", "appointmentid", "encounters", "id"),
         ("conditions", "patient", "patients", "id"),
         ("conditions", "encounter", "encounters", "id"),
         ("devices", "patient", "patients", "id"),
@@ -393,10 +401,32 @@ def test_code_normalization(
             results.add_fail(f"Code coverage: {table}.{col} ({vocab})",
                              f"{missing} distinct codes missing from codes.parquet")
 
+    # Also verify claims_transactions.procedurecode and claims.diagnosis1..7 exist in codes.parquet (any vocab)
+    cross_vocab_checks = [
+        ("claims_transactions", "procedurecode"),
+        ("claims", "diagnosis1"),
+        ("claims", "diagnosis2"),
+    ]
+    for table, col in cross_vocab_checks:
+        if table not in loaded_tables:
+            continue
+        missing = con.execute(f"""
+            SELECT COUNT(DISTINCT t.{col})
+            FROM {table} t
+            LEFT JOIN codes c ON c.code = CAST(t.{col} AS VARCHAR)
+            WHERE t.{col} IS NOT NULL AND c.code IS NULL
+        """).fetchone()[0]
+        if missing == 0:
+            results.add_pass(f"Code coverage: {table}.{col} (any vocab) -> codes.parquet (100%)")
+        else:
+            results.add_fail(f"Code coverage: {table}.{col} (any vocab)",
+                             f"{missing} distinct codes missing from codes.parquet")
+
     if not keep_descriptions:
         expected_dropped = {
             "allergies": ["description", "description1", "description2"],
             "careplans": ["description", "reasondescription"],
+            "claims_transactions": ["notes"],
             "conditions": ["description"],
             "devices": ["description"],
             "encounters": ["description", "reasondescription"],
