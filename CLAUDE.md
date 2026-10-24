@@ -126,12 +126,31 @@ uv run python 2_generate_incremental.py --total 5000 --batch_size 250 --seed 123
 - All Synthea tables as Parquet files (without descriptions by default), including `symptoms.parquet` and encounter-linked `notes.parquet`
 - `codes.parquet` - Normalized code dictionary for lookups
 
+#### `scripts/process_notes.py`
+Incrementally rewrites structured Synthea clinical notes (`notes.parquet`) into natural physician notes (`notes_llm.parquet`) via an OpenAI-compatible `/v1/chat/completions` API (**oMLX** locally on Apple Silicon or **vLLM / SGLang** on a remote NVIDIA GPU):
+- Combines static instructions, `--template` (`scripts/templates/template_soap.txt`), and `--voice` (`scripts/templates/voice_terse.txt` or `voice_verbose.txt`) into the `system` role message and warms up the KV prefix cache before fanning out to concurrent workers
+- Disables reasoning token overhead (`chat_template_kwargs: {"enable_thinking": false}`)
+- Checkpoints batches incrementally to `notes_llm.parquet` matched on `(patient, encounter)`
+- **Recommended Models**:
+  - **Local M4 Max (128GB, oMLX)**: `mlx-community/Qwen3-4B-Instruct-2507-4bit` (`1.41 notes/s`, `200–276 out tok/s`, `806 total tok/s` at `-c 8`) or `Jundot/Qwen3.6-35B-A3B-oQ6-mtp` (`0.80 notes/s`, `137 out tok/s`, `608 total tok/s` at `-c 8`)
+  - **Remote RTX 5080 (16GB GDDR7, vLLM)**: `Qwen/Qwen3-4B-Instruct-2507-FP8` (`-c 32` to `64`, ~13–17 notes/s / ~60–80 mins per 1,000 patients) or `nvidia/Llama-3.1-8B-Instruct-FP4` / `Qwen/Qwen2.5-7B-Instruct-AWQ`
+
+**Usage:**
+```bash
+uv run python scripts/process_notes.py transform \
+  --base_url http://localhost:8081/v1 \
+  --model Qwen3-4B-Instruct-2507-4bit \
+  --concurrency 8 \
+  --template scripts/templates/template_soap.txt \
+  --voice scripts/templates/voice_terse.txt
+```
+
 #### `scripts/test_parquet_load.py`
 Automated validation test suite for `./output/parquet/*.parquet`:
 - Verifies all Parquet tables exist and are populated
 - Checks primary key uniqueness (`id`, `vocab + code`) and foreign key referential integrity across all 20+ tables
 - Verifies Synthea 4.0+ enhancements (`organizations.npi`, `providers.npi`, no `1970-01-01` stop dates, no orphan QALY/DALY/QOLS observations, unique SSNs, and 0 non-MedStar VA facility leaks)
-- Confirms 100% code coverage in `codes.parquet` and removal of redundant description columns
+- Confirms 100% code coverage in `codes.parquet` and removal of redundant description columns (140 total checks)
 
 **Usage:**
 ```bash

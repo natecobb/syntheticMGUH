@@ -57,7 +57,24 @@ Run all steps from within the `syntheticMGUH/` directory:
    ```bash
    uv run python scripts/test_parquet_load.py
    ```
-5. **Sync Parquet files to Databricks Unity Catalog (optional)**:
+5. **Rewrite Clinical Notes with an LLM (optional)**:
+   `scripts/process_notes.py` rewrites structured Synthea notes (`notes.parquet`) into natural physician notes (`notes_llm.parquet`) against any OpenAI-compatible `/v1` endpoint (e.g., local **oMLX** or remote **vLLM**), using system-prompt prefix caching and concurrent request batching:
+   ```bash
+   uv run python scripts/process_notes.py transform \
+     --base_url http://localhost:8081/v1 \
+     --model Qwen3.6-35B-A3B-oQ6-mtp \
+     --concurrency 8 \
+     --template scripts/templates/template_soap.txt \
+     --voice scripts/templates/voice_terse.txt
+   ```
+   **Recommended Models & Throughput Benchmarks** *(~62,100 post-2010 notes per 1,000 patients)*:
+   | Hardware / Backend | Recommended Model Type | Concurrency | Throughput | Est. Time / 1,000 Patients |
+   |---|---|---:|---:|---:|
+   | **Apple M4 Max (128GB, oMLX)** | `4B` Dense 4-bit (`Qwen3-4B-Instruct-2507-4bit`) | `8` | `1.41 notes/s` (`200–276 out tok/s`, `806 tot tok/s`) | ~12.2 hrs |
+   | **Apple M4 Max (128GB, oMLX)** | `35B-A3B` MoE (`Qwen3.6-35B-A3B-oQ6-mtp`) | `8` | `0.80 notes/s` (`137 out tok/s`, `608 tot tok/s`) | ~21.5 hrs |
+   | **NVIDIA RTX 5080 (16GB, vLLM)** | `4B` Dense FP8 (`Qwen3-4B-Instruct-2507-FP8`) | `32–64` | `~13–17 notes/s` (`~2,400+ out tok/s`) | ~60–80 mins |
+   | **NVIDIA RTX 5080 (16GB, vLLM)** | `7B–8B` 4-bit / FP4 (`Qwen2.5-7B-AWQ` / `Llama-3.1-8B-FP4`) | `32` | `~9–12 notes/s` (`~1,700 out tok/s`) | ~1.4–1.9 hrs |
+6. **Sync Parquet files to Databricks Unity Catalog (optional)**:
    ```bash
    ./4_sync_to_databricks.sh
    ```
