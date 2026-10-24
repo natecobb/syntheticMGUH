@@ -58,14 +58,12 @@ Run all steps from within the `syntheticMGUH/` directory:
    uv run python scripts/test_parquet_load.py
    ```
 5. **Rewrite Clinical Notes with an LLM (optional)**:
-   `scripts/process_notes.py` rewrites structured Synthea notes (`notes.parquet`) into natural physician notes (`notes_llm.parquet`) against any OpenAI-compatible `/v1` endpoint (e.g., local **oMLX** or remote **vLLM**), using system-prompt prefix caching and concurrent request batching:
+   `scripts/process_notes.py` rewrites structured Synthea notes (`notes.parquet`) into natural physician notes (`notes_llm.parquet`) against any OpenAI-compatible `/v1` endpoint (e.g., local **oMLX** or remote **vLLM**). By default, it maps `encounters.encounterclass` to 10 structural note templates (`template_*.txt`) and `encounters.provider` to 10 clinician writing voices (`voice_*.txt`) via `scripts/templates/style_mapping.json`, sorting by `(provider, encounterclass)` for KV prefix-cache reuse:
    ```bash
    uv run python scripts/process_notes.py transform \
      --base_url http://localhost:8081/v1 \
-     --model Qwen3.6-35B-A3B-oQ6-mtp \
-     --concurrency 8 \
-     --template scripts/templates/template_soap.txt \
-     --voice scripts/templates/voice_terse.txt
+     --model Qwen3-4B-Instruct-2507-4bit \
+     --concurrency 8
    ```
    **Recommended Models & Throughput Benchmarks** *(~62,100 post-2010 notes per 1,000 patients)*:
    | Hardware / Backend | Recommended Model Type | Concurrency | Throughput | Est. Time / 1,000 Patients |

@@ -1,0 +1,8 @@
+SNF / SUB-ACUTE REHAB INDICATION:
+[Primary diagnosis and reason for skilled nursing / rehab stay]
+
+INTERVAL COURSE & FUNCTIONAL STATUS:
+[Medical stability, social/functional background, allergies, and active medications]
+
+ASSESSMENT & REHAB PLAN:
+[Active problems, skilled nursing/therapy interventions, and disposition goals]

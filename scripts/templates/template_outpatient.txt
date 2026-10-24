@@ -1,0 +1,11 @@
+REASON FOR VISIT:
+[Primary reason for outpatient visit or procedure]
+
+CLINICAL SUMMARY:
+[Relevant medical/social history, allergies, and current medications]
+
+FINDINGS & PROCEDURES:
+[Vitals, exam findings, diagnostic tests, or outpatient procedures performed]
+
+IMPRESSION & PLAN:
+[Diagnoses, medication updates, and follow-up plan]

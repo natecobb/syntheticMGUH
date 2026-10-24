@@ -1,0 +1,11 @@
+TELEHEALTH ENCOUNTER & CHIEF COMPLAINT:
+[Virtual visit reason and current symptoms]
+
+HISTORY & MEDICATIONS:
+[Relevant history, allergies, and current medications]
+
+OBSERVATIONAL ASSESSMENT:
+[Visual inspection and self-reported vitals/findings]
+
+ASSESSMENT & PLAN:
+[Clinical impression, prescriptions/referrals, and follow-up instructions]

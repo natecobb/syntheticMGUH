@@ -1,0 +1,89 @@
+{
+  "description": "Maps encounter.encounterclass to structural note templates and encounter.provider to clinician writing voices.",
+  "default_template": "scripts/templates/template_soap.txt",
+  "default_voice": "scripts/templates/voice_direct_clinical.txt",
+  "encounter_templates": {
+    "ambulatory": "scripts/templates/template_soap.txt",
+    "wellness": "scripts/templates/template_wellness.txt",
+    "outpatient": "scripts/templates/template_outpatient.txt",
+    "urgentcare": "scripts/templates/template_urgentcare.txt",
+    "emergency": "scripts/templates/template_emergency.txt",
+    "inpatient": "scripts/templates/template_inpatient.txt",
+    "home": "scripts/templates/template_home.txt",
+    "virtual": "scripts/templates/template_virtual.txt",
+    "snf": "scripts/templates/template_snf.txt",
+    "hospice": "scripts/templates/template_hospice.txt"
+  },
+  "provider_voices": [
+    {
+      "provider_id": "c1c1f701-15d7-3d9b-9c51-b05614c02786",
+      "npi": "9999999896",
+      "provider_name": "Lesley Fisher",
+      "organization_name": "GEORGETOWN UNIVERSITY HOSP",
+      "voice": "scripts/templates/voice_terse.txt"
+    },
+    {
+      "provider_id": "1ebd1a9d-a9ea-3f70-9de5-f24f5647ce9c",
+      "npi": "9999999995",
+      "provider_name": "Rosette Bruen",
+      "organization_name": "MEDSTAR WASHINGTON HOSPITAL CENTER",
+      "voice": "scripts/templates/voice_direct_clinical.txt"
+    },
+    {
+      "provider_id": "91451e0b-bc9f-35a1-ba6c-6f034b83432d",
+      "npi": "9999999490",
+      "provider_name": "Terrell Fadel",
+      "organization_name": "ONE MEDSTAR PRIMARY CARE LLC",
+      "voice": "scripts/templates/voice_verbose.txt"
+    },
+    {
+      "provider_id": "71e92145-160e-3785-a6a3-9cde8c1766e6",
+      "npi": "9999999797",
+      "provider_name": "Ludivina Steuber",
+      "organization_name": "MEDSTAR GEORGETOWN MEDICAL CENTER  INC",
+      "voice": "scripts/templates/voice_structured_bullets.txt"
+    },
+    {
+      "provider_id": "1d8d6d85-2821-363b-892e-66c6497fce53",
+      "npi": "9999999599",
+      "provider_name": "Wilfredo Medhurst",
+      "organization_name": "GUH-KIDS MOBILE MEDICAL CLINIC PROGRAM LLC",
+      "voice": "scripts/templates/voice_warm_conversational.txt"
+    },
+    {
+      "provider_id": "81c1ba5b-4883-3b95-bf0c-9e2ab6c9a795",
+      "npi": "9999999391",
+      "provider_name": "Bernard Carter",
+      "organization_name": "Medstar Promptcare - Adams Morgan",
+      "voice": "scripts/templates/voice_rapid_acute.txt"
+    },
+    {
+      "provider_id": "93c95977-ce53-3291-b1b1-a9cbfd31d6ab",
+      "npi": "9999999292",
+      "provider_name": "Jodie Wintheiser",
+      "organization_name": "Medstar Promptcare - Capitol Hill",
+      "voice": "scripts/templates/voice_hurried_typos.txt"
+    },
+    {
+      "provider_id": "24b3746a-cb92-31f2-b9ec-52eef19b52ed",
+      "npi": "9999999698",
+      "provider_name": "Whitney Wyman",
+      "organization_name": "MMG - GEORGETOWN FAMILY PRACTICE LLC",
+      "voice": "scripts/templates/voice_formal_academic.txt"
+    },
+    {
+      "provider_id": "b7cbbb9d-23b2-3ebf-b15f-87af481db7d6",
+      "npi": "9999999094",
+      "provider_name": "Delta Quigley",
+      "organization_name": "BRIDGEPOINT SUB-ACUTE AND REHAB CAPITOL HILL",
+      "voice": "scripts/templates/voice_functional_rehab.txt"
+    },
+    {
+      "provider_id": "c36502b5-cfba-3b29-927a-35bf49321b30",
+      "npi": "9999999193",
+      "provider_name": "Margaret Herzog",
+      "organization_name": "MEDSTAR HEALTH VISITING NURSE ASSOCIATION  INC.",
+      "voice": "scripts/templates/voice_nursing_narrative.txt"
+    }
+  ]
+}

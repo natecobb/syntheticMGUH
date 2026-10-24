@@ -9,11 +9,11 @@ Pass 1 (parse):
   (Note: 3_convert_to_parquet.py now performs Pass 1 automatically during Parquet conversion.)
 
 Pass 2 (transform):
-  - Read notes.parquet
-  - Incrementally transform notes with an OpenAI-compatible LLM server (oMLX, vLLM, SGLang, Ollama)
-  - Uses system-prompt prefix caching and concurrent request batching for high throughput
-  - Only processes notes not already in notes_llm.parquet
-  - Appends batches to notes_llm.parquet
+  - Read notes.parquet (joined with encounters.parquet / providers.parquet / organizations.parquet)
+  - Map encounter.encounterclass -> structural note template (template_*.txt)
+  - Map encounter.provider -> clinician writing voice (voice_*.txt) via scripts/templates/style_mapping.json
+  - Group notes by (provider, encounterclass) for KV prefix-cache reuse and concurrent batching
+  - Append batches incrementally to notes_llm.parquet
 """
 
 import os
@@ -89,7 +89,7 @@ def check_llm_server_available(base_url: str, model: str, api_key: str) -> bool:
 
 def build_system_prompt(template: Optional[str] = None, voice_example: Optional[str] = None) -> str:
     """
-    Build the static system prompt once so oMLX / vLLM can KV-cache the prefix across all notes.
+    Build the static system prompt for a (template, voice) pair so oMLX / vLLM can KV-cache the prefix.
     """
     parts = [
         "Transform the structured clinical note provided by the user into a natural physician's note. "
@@ -110,6 +110,93 @@ def build_system_prompt(template: Optional[str] = None, voice_example: Optional[
         "- Add the occasional realistic clinical abbreviation or minor typo if consistent with the voice"
     )
     return "\n".join(parts)
+
+
+class StyleResolver:
+    """
+    Resolves (encounterclass -> template) and (provider -> voice) from style_mapping.json,
+    caching file contents and compiled system prompts in memory.
+    """
+
+    def __init__(
+        self,
+        style_map_path: Optional[str] = "scripts/templates/style_mapping.json",
+        override_template_path: Optional[str] = None,
+        override_voice_path: Optional[str] = None
+    ):
+        self.override_template_path = override_template_path
+        self.override_voice_path = override_voice_path
+        self.default_template = None
+        self.default_voice = None
+        self.encounter_templates: Dict[str, str] = {}
+        self.by_provider_id: Dict[str, str] = {}
+        self.by_npi: Dict[str, str] = {}
+        self.by_org_name: Dict[str, str] = {}
+        self._file_cache: Dict[str, str] = {}
+        self._prompt_cache: Dict[Tuple[Optional[str], Optional[str]], str] = {}
+
+        if style_map_path and Path(style_map_path).exists():
+            with open(style_map_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            self.default_template = cfg.get("default_template")
+            self.default_voice = cfg.get("default_voice")
+            for k, v in cfg.get("encounter_templates", {}).items():
+                self.encounter_templates[k.lower().strip()] = v
+            for entry in cfg.get("provider_voices", []):
+                voice = entry.get("voice")
+                if not voice:
+                    continue
+                if entry.get("provider_id"):
+                    self.by_provider_id[str(entry["provider_id"]).strip()] = voice
+                if entry.get("npi"):
+                    self.by_npi[str(entry["npi"]).strip()] = voice
+                if entry.get("organization_name"):
+                    self.by_org_name[str(entry["organization_name"]).strip().upper()] = voice
+
+    def _read_cached(self, path_str: Optional[str]) -> Optional[str]:
+        if not path_str:
+            return None
+        if path_str not in self._file_cache:
+            p = Path(path_str)
+            self._file_cache[path_str] = p.read_text(encoding="utf-8") if p.exists() else None
+        return self._file_cache[path_str]
+
+    def resolve(
+        self,
+        encounterclass: Optional[str],
+        provider_id: Optional[str],
+        provider_npi: Optional[str] = None,
+        org_name: Optional[str] = None
+    ) -> Tuple[Optional[str], Optional[str], str]:
+        """
+        Return (template_path, voice_path, compiled_system_prompt).
+        """
+        if self.override_template_path:
+            t_path = self.override_template_path
+        else:
+            ec_key = (encounterclass or "").lower().strip()
+            t_path = self.encounter_templates.get(ec_key, self.default_template)
+
+        if self.override_voice_path:
+            v_path = self.override_voice_path
+        else:
+            pid = (provider_id or "").strip()
+            npi = str(provider_npi or "").strip()
+            org = (org_name or "").strip().upper()
+            v_path = (
+                self.by_provider_id.get(pid)
+                or self.by_npi.get(npi)
+                or self.by_org_name.get(org)
+                or self.default_voice
+            )
+
+        key = (t_path, v_path)
+        if key not in self._prompt_cache:
+            t_text = self._read_cached(t_path)
+            v_text = self._read_cached(v_path)
+            self._prompt_cache[key] = build_system_prompt(template=t_text, voice_example=v_text)
+
+        return t_path, v_path, self._prompt_cache[key]
 
 
 def parse_notes_pass1(
@@ -265,7 +352,9 @@ def transform_note_with_llm(
     temperature: float,
     max_tokens: int = 1200,
     template_path: str = None,
-    voice_path: str = None
+    voice_path: str = None,
+    encounterclass: str = None,
+    provider_id: str = None
 ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
     """
     Transform a structured note into a natural clinical note via OpenAI-compatible /v1/chat/completions.
@@ -314,7 +403,6 @@ def transform_note_with_llm(
         message = choices[0].get("message", {})
         response_text = (message.get("content") or "").strip()
 
-        # Strip <think>...</think> blocks if any model emitted reasoning inline
         if "<think>" in response_text and "</think>" in response_text:
             response_text = response_text.split("</think>")[-1].strip()
 
@@ -329,6 +417,8 @@ def transform_note_with_llm(
         metadata = {
             "model": model,
             "temperature": temperature,
+            "encounterclass": encounterclass,
+            "provider": provider_id,
             "template_used": template_path,
             "voice_used": voice_path,
             "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
@@ -357,20 +447,19 @@ def transform_notes_pass2(
     api_key: str,
     model: str,
     temperature: float,
-    template: str = None,
-    voice_example: str = None,
-    template_path: str = None,
-    voice_path: str = None,
+    style_resolver: StyleResolver,
     limit: int = None,
     batch_size: int = 100,
     concurrency: int = 8,
     max_tokens: int = 1200
 ) -> Dict[str, Any]:
     """
-    Pass 2: Incrementally transform notes with LLM using concurrent batching and prefix caching.
+    Pass 2: Incrementally transform notes with LLM using encounter-mapped templates,
+    provider-mapped voices, prefix caching, and concurrent batching.
     """
     notes_file = Path(notes_parquet)
     output_file = Path(output_parquet)
+    parquet_dir = notes_file.parent
 
     if not notes_file.exists():
         print(f"✗ Notes file not found: {notes_parquet}")
@@ -390,6 +479,62 @@ def transform_notes_pass2(
     total_notes = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
     print(f"✓ Loaded {total_notes:,} notes")
 
+    # Join encounterclass and provider metadata if encounters.parquet exists alongside notes.parquet
+    encounters_file = parquet_dir / "encounters.parquet"
+    providers_file = parquet_dir / "providers.parquet"
+    organizations_file = parquet_dir / "organizations.parquet"
+
+    if encounters_file.exists():
+        con.execute(f"CREATE TABLE encounters AS SELECT id, encounterclass, provider FROM read_parquet('{encounters_file}')")
+        if providers_file.exists() and organizations_file.exists():
+            con.execute(f"CREATE TABLE providers AS SELECT id, CAST(npi AS VARCHAR) AS npi, organization FROM read_parquet('{providers_file}')")
+            con.execute(f"CREATE TABLE organizations AS SELECT id, name FROM read_parquet('{organizations_file}')")
+            con.execute("""
+                CREATE TABLE notes_enriched AS
+                SELECT
+                    n.patient,
+                    n.date,
+                    n.note_text,
+                    n.encounter,
+                    e.encounterclass,
+                    e.provider AS provider_id,
+                    pr.npi AS provider_npi,
+                    o.name AS organization_name
+                FROM notes n
+                LEFT JOIN encounters e ON n.encounter = e.id
+                LEFT JOIN providers pr ON e.provider = pr.id
+                LEFT JOIN organizations o ON pr.organization = o.id
+            """)
+        else:
+            con.execute("""
+                CREATE TABLE notes_enriched AS
+                SELECT
+                    n.patient,
+                    n.date,
+                    n.note_text,
+                    n.encounter,
+                    e.encounterclass,
+                    e.provider AS provider_id,
+                    NULL::VARCHAR AS provider_npi,
+                    NULL::VARCHAR AS organization_name
+                FROM notes n
+                LEFT JOIN encounters e ON n.encounter = e.id
+            """)
+    else:
+        con.execute("""
+            CREATE TABLE notes_enriched AS
+            SELECT
+                patient,
+                date,
+                note_text,
+                encounter,
+                NULL::VARCHAR AS encounterclass,
+                NULL::VARCHAR AS provider_id,
+                NULL::VARCHAR AS provider_npi,
+                NULL::VARCHAR AS organization_name
+            FROM notes
+        """)
+
     if output_file.exists():
         print(f"\nLoading existing LLM notes from {output_file}...")
         con.execute(f"""
@@ -401,25 +546,25 @@ def transform_notes_pass2(
 
         con.execute("""
             CREATE TABLE notes_to_process AS
-            SELECT n.*
-            FROM notes n
+            SELECT ne.*
+            FROM notes_enriched ne
             LEFT JOIN notes_llm llm
-              ON n.encounter = llm.encounter
-             AND n.patient = llm.patient
+              ON ne.encounter = llm.encounter
+             AND ne.patient = llm.patient
             WHERE llm.patient IS NULL
         """)
     else:
         print("\nNo existing LLM notes found, will process from start")
         con.execute("""
             CREATE TABLE notes_to_process AS
-            SELECT * FROM notes
+            SELECT * FROM notes_enriched
         """)
 
     if limit:
         con.execute(f"""
             CREATE TABLE notes_to_process_limited AS
             SELECT * FROM notes_to_process
-            ORDER BY patient, date
+            ORDER BY provider_id, encounterclass, patient, date
             LIMIT {limit}
         """)
         con.execute("DROP TABLE notes_to_process")
@@ -437,23 +582,26 @@ def transform_notes_pass2(
             "transformed": 0
         }
 
+    # Sort by (provider_id, encounterclass) so identical (voice, template) system prompts run consecutively
     notes_to_transform = con.execute("""
-        SELECT patient, CAST(date AS VARCHAR) AS date_str, note_text, encounter
+        SELECT
+            patient,
+            CAST(date AS VARCHAR) AS date_str,
+            note_text,
+            encounter,
+            encounterclass,
+            provider_id,
+            provider_npi,
+            organization_name
         FROM notes_to_process
-        ORDER BY patient, date
+        ORDER BY provider_id, encounterclass, patient, date
     """).fetchall()
-
-    system_prompt = build_system_prompt(template=template, voice_example=voice_example)
 
     print(f"\nTransforming {len(notes_to_transform):,} notes...")
     print(f"Endpoint:    {base_url}")
     print(f"Model:       {model}")
     print(f"Concurrency: {concurrency} parallel requests")
     print(f"Temperature: {temperature}")
-    if template_path:
-        print(f"Template:    {template_path}")
-    if voice_path:
-        print(f"Voice:       {voice_path}")
 
     session = requests.Session()
     adapter = requests.adapters.HTTPAdapter(
@@ -463,7 +611,6 @@ def transform_notes_pass2(
     session.mount("http://", adapter)
     session.mount("https://", adapter)
 
-    # Warm up prefix cache with the first note if running concurrent workers
     wall_start = time.time()
     total_transformed = 0
     total_failed = 0
@@ -473,7 +620,13 @@ def transform_notes_pass2(
     transformed_records = []
 
     def _worker(idx_and_row):
-        idx, (patient, date_str, note_text, encounter) = idx_and_row
+        idx, (patient, date_str, note_text, encounter, encounterclass, provider_id, provider_npi, org_name) = idx_and_row
+        t_path, v_path, system_prompt = style_resolver.resolve(
+            encounterclass=encounterclass,
+            provider_id=provider_id,
+            provider_npi=provider_npi,
+            org_name=org_name
+        )
         natural_text, metadata = transform_note_with_llm(
             session=session,
             base_url=base_url,
@@ -483,8 +636,10 @@ def transform_notes_pass2(
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
-            template_path=template_path,
-            voice_path=voice_path
+            template_path=t_path,
+            voice_path=v_path,
+            encounterclass=encounterclass,
+            provider_id=provider_id
         )
         return idx, patient, date_str, note_text, encounter, natural_text, metadata
 
@@ -506,6 +661,8 @@ def transform_notes_pass2(
             cached_tok = metadata.get("cached_prompt_tokens", 0)
             out_tok = metadata.get("output_tokens_actual", 0)
             req_time = metadata.get("elapsed_time_seconds", 0.0)
+            ec = metadata.get("encounterclass") or "unknown"
+            v_used = Path(metadata["voice_used"]).stem if metadata.get("voice_used") else "default"
             total_input_tokens += in_tok
             total_output_tokens += out_tok
             sum_request_latency += req_time
@@ -515,7 +672,7 @@ def transform_notes_pass2(
             cache_str = f" (cached {cached_tok})" if cached_tok else ""
             print(
                 f"  [{total_transformed + total_failed}/{len(notes_to_transform)}] "
-                f"{patient[:8]}... {date_str} ✓ "
+                f"{patient[:8]}... ({ec}/{v_used}) ✓ "
                 f"{out_tok} out_tok{cache_str} in {req_time:.2f}s | "
                 f"Net: {eff_out_tps:.1f} out_tok/s ({eff_notes_ps:.2f} notes/s)"
             )
@@ -678,8 +835,8 @@ def main():
     )
     parser.add_argument(
         '--model',
-        default='Qwen3.6-35B-A3B-oQ6-mtp',
-        help='[transform] Model ID served by oMLX / remote server (default: Qwen3.6-35B-A3B-oQ6-mtp)'
+        default='Qwen3-4B-Instruct-2507-4bit',
+        help='[transform] Model ID served by oMLX / remote server (default: Qwen3-4B-Instruct-2507-4bit)'
     )
     parser.add_argument(
         '--concurrency', '-c',
@@ -700,14 +857,19 @@ def main():
         help='[transform] Max completion tokens per note (default: 1200)'
     )
     parser.add_argument(
+        '--style_map',
+        default='scripts/templates/style_mapping.json',
+        help='[transform] JSON file mapping encounterclass -> template and provider -> voice (default: scripts/templates/style_mapping.json)'
+    )
+    parser.add_argument(
         '--template',
         default=None,
-        help='[transform] Path to note template file (e.g. scripts/templates/template_soap.txt)'
+        help='[transform] Optional override: use a single note template file for all notes'
     )
     parser.add_argument(
         '--voice',
         default=None,
-        help='[transform] Path to voice example file (e.g. scripts/templates/voice_terse.txt)'
+        help='[transform] Optional override: use a single voice example file for all notes'
     )
     parser.add_argument(
         '--batch_size',
@@ -736,23 +898,24 @@ def main():
             print(f"Output:                  {args.output}")
 
     elif args.mode == 'transform':
-        template = None
-        if args.template:
-            template_path = Path(args.template)
-            if not template_path.exists():
-                print(f"✗ Template file not found: {args.template}")
-                return
-            template = template_path.read_text(encoding='utf-8')
-            print(f"✓ Loaded template: {args.template}")
+        if args.template and not Path(args.template).exists():
+            print(f"✗ Template file not found: {args.template}")
+            return
+        if args.voice and not Path(args.voice).exists():
+            print(f"✗ Voice file not found: {args.voice}")
+            return
 
-        voice_example = None
+        style_resolver = StyleResolver(
+            style_map_path=args.style_map,
+            override_template_path=args.template,
+            override_voice_path=args.voice
+        )
+        if args.style_map and Path(args.style_map).exists() and not (args.template and args.voice):
+            print(f"✓ Loaded encounter-template & provider-voice mapping: {args.style_map}")
+        if args.template:
+            print(f"✓ Template override: {args.template}")
         if args.voice:
-            voice_path = Path(args.voice)
-            if not voice_path.exists():
-                print(f"✗ Voice file not found: {args.voice}")
-                return
-            voice_example = voice_path.read_text(encoding='utf-8')
-            print(f"✓ Loaded voice example: {args.voice}")
+            print(f"✓ Voice override:    {args.voice}")
 
         api_key = resolve_api_key(args.api_key)
         print(f"\nChecking LLM server availability at {args.base_url}...")
@@ -766,10 +929,7 @@ def main():
             api_key=api_key,
             model=args.model,
             temperature=args.temperature,
-            template=template,
-            voice_example=voice_example,
-            template_path=args.template,
-            voice_path=args.voice,
+            style_resolver=style_resolver,
             limit=args.limit,
             batch_size=args.batch_size,
             concurrency=args.concurrency,

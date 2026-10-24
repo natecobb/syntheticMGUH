@@ -128,7 +128,8 @@ uv run python 2_generate_incremental.py --total 5000 --batch_size 250 --seed 123
 
 #### `scripts/process_notes.py`
 Incrementally rewrites structured Synthea clinical notes (`notes.parquet`) into natural physician notes (`notes_llm.parquet`) via an OpenAI-compatible `/v1/chat/completions` API (**oMLX** locally on Apple Silicon or **vLLM / SGLang** on a remote NVIDIA GPU):
-- Combines static instructions, `--template` (`scripts/templates/template_soap.txt`), and `--voice` (`scripts/templates/voice_terse.txt` or `voice_verbose.txt`) into the `system` role message and warms up the KV prefix cache before fanning out to concurrent workers
+- Automatically maps `encounters.encounterclass` to 10 structural templates (`template_*.txt`) and `encounters.provider` to 10 clinician voices (`voice_*.txt`) via `scripts/templates/style_mapping.json` (or accepts `--template` / `--voice` overrides)
+- Sorts notes by `(provider_id, encounterclass)` and warms up the KV prefix cache so each `(template, voice)` system prompt achieves 100% prefix cache reuse
 - Disables reasoning token overhead (`chat_template_kwargs: {"enable_thinking": false}`)
 - Checkpoints batches incrementally to `notes_llm.parquet` matched on `(patient, encounter)`
 - **Recommended Models**:
@@ -140,9 +141,7 @@ Incrementally rewrites structured Synthea clinical notes (`notes.parquet`) into 
 uv run python scripts/process_notes.py transform \
   --base_url http://localhost:8081/v1 \
   --model Qwen3-4B-Instruct-2507-4bit \
-  --concurrency 8 \
-  --template scripts/templates/template_soap.txt \
-  --voice scripts/templates/voice_terse.txt
+  --concurrency 8
 ```
 
 #### `scripts/test_parquet_load.py`

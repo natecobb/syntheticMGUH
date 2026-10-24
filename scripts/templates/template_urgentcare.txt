@@ -1,0 +1,11 @@
+CHIEF COMPLAINT & HPI:
+[Presenting problem, onset, and brief history]
+
+BACKGROUND (PMH / MEDS / ALLERGIES):
+[Relevant history, active meds, allergies]
+
+FOCUSED EXAM:
+[Vitals and focused physical findings]
+
+MDM & DISPOSITION:
+[Working diagnosis, urgent care treatments/prescriptions, return precautions]
