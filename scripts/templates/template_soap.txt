@@ -1,11 +1,11 @@
-SUBJECTIVE:
-[Patient chief complaint and relevant history]
+SUBJECTIVE (CC / HPI / PMH / SOCIAL):
+[Chief complaint, patient demographics, past medical history, and social history]
 
-OBJECTIVE:
-[Physical exam findings, vital signs, test results]
+MEDICATIONS & ALLERGIES:
+[Known allergies and active home medications]
 
 ASSESSMENT:
-[Diagnosis and clinical impression]
+[Presenting diagnoses and clinical problems]
 
-PLAN:
-[Treatment plan, medications, follow-up]
+PLAN (PROCEDURES / IMMUNIZATIONS / MEDS):
+[Procedures performed, immunizations given, medications prescribed, and referrals]

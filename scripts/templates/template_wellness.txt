@@ -1,11 +1,8 @@
 INTERVAL HISTORY & CONCERNS:
-[Patient status, preventive needs, and interval history since last checkup]
+[Chief complaint, demographics, and past medical conditions]
 
-SOCIAL & PREVENTIVE SCREENING:
-[Tobacco/alcohol/social history, insurance, allergies, active medications]
+SOCIAL HISTORY, ALLERGIES & MEDICATIONS:
+[Smoking/alcohol/social background, insurance, allergies, and active medications]
 
-EXAM & VITALS:
-[Vital signs and physical exam findings if recorded]
-
-ASSESSMENT & HEALTH MAINTENANCE PLAN:
-[Preventive diagnoses, immunizations administered, screenings, referrals, and follow-up]
+ASSESSMENT & PREVENTIVE PLAN:
+[Preventive diagnoses, immunizations administered, screenings/procedures performed, and follow-up]

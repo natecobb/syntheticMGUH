@@ -3,8 +3,7 @@
 /.Rproj.user/
 /.idea
 /.venv
-/bin/
-/providers/
+/synthea/bin/
 /output/
 .DS_Store
 __pycache__/

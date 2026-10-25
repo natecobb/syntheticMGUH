@@ -99,12 +99,12 @@ def main(
     checkpoint_file = parquet_path / "_checkpoint.json"
 
     # Ensure Synthea JAR and provider files are ready
-    jar_path = repo_root / "bin" / "synthea-with-dependencies.jar"
+    jar_path = repo_root / "synthea" / "bin" / "synthea-with-dependencies.jar"
     if not jar_path.exists():
-        print("Synthea JAR not found in bin/. Running ./0_setup_synthea.sh...")
+        print("Synthea JAR not found in synthea/bin/. Running ./0_setup_synthea.sh...")
         subprocess.run(["./0_setup_synthea.sh"], cwd=repo_root, check=True)
 
-    providers_dir = repo_root / "providers" / "syntheticMGUH"
+    providers_dir = repo_root / "synthea" / "providers" / "syntheticMGUH"
     if not (providers_dir / "hospitals.csv").exists():
         print("MedStar provider files not found. Running 1_build_providers.py...")
         subprocess.run([sys.executable, "1_build_providers.py"], cwd=repo_root, check=True)
@@ -198,8 +198,8 @@ def main(
         _clean_raw_dirs(output_path)
 
         # 2. Run Synthea for this batch
-        # NOTE: -c ./synthea.properties MUST come before -p/-s/-cs/-r so CLI flags override properties!
-        classpath = f".:bin/resources:{jar_path}"
+        # NOTE: -c ./synthea/synthea.properties MUST come before -p/-s/-cs/-r so CLI flags override properties!
+        classpath = f"synthea:synthea/bin/resources:{jar_path}"
         excluded_csvs = (
             "patient_expenses.csv,claims.csv,claims_transactions.csv"
             if no_claims
@@ -214,7 +214,9 @@ def main(
             "District of Columbia",
             "Washington",
             "-c",
-            "./synthea.properties",
+            "./synthea/synthea.properties",
+            "-d",
+            "./synthea/modules",
             "-p",
             str(batch_patients),
             "-s",

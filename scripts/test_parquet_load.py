@@ -68,6 +68,8 @@ def load_parquet_views(con: duckdb.DuckDBPyConnection, parquet_dir: Path) -> set
     """Register all Parquet files in parquet_dir as DuckDB views."""
     loaded = set()
     for pq_file in sorted(parquet_dir.glob("*.parquet")):
+        if pq_file.name.startswith("."):
+            continue
         table_name = pq_file.stem
         con.execute(f"CREATE OR REPLACE VIEW {table_name} AS SELECT * FROM read_parquet('{pq_file}')")
         loaded.add(table_name)
@@ -450,6 +452,44 @@ def test_code_normalization(
             else:
                 results.add_fail(f"Redundant descriptions still in '{table}'",
                                  f"Found columns: {', '.join(leftover)}")
+
+    # Verify OHDSI Athena OMOP + ICD-10-CM / HCPCS crosswalk columns in codes.parquet
+    code_cols = {c[0] for c in con.execute("DESCRIBE codes").fetchall()}
+    expected_xw_cols = {"omop_concept_id", "omop_domain_id", "icd10cm_code", "icd10cm_description", "hcpcs_code"}
+    if expected_xw_cols.issubset(code_cols):
+        results.add_pass("OHDSI Athena crosswalk columns present in codes.parquet (omop_concept_id, omop_domain_id, icd10cm_code, hcpcs_code)")
+        total_codes, domain_mapped, omop_mapped = con.execute("""
+            SELECT COUNT(*), COUNT(omop_domain_id), COUNT(omop_concept_id)
+            FROM codes
+        """).fetchone()
+        if domain_mapped == total_codes:
+            results.add_pass(f"OMOP domain_id populated for 100% of codes ({domain_mapped:,}/{total_codes:,})")
+        else:
+            results.add_warning(f"OMOP domain_id populated for {domain_mapped:,}/{total_codes:,} codes", "Some codes missing omop_domain_id")
+
+        omop_pct = (omop_mapped / total_codes * 100) if total_codes > 0 else 0.0
+        if omop_pct >= 95.0:
+            results.add_pass(f"OMOP concept_id mapped for {omop_mapped:,}/{total_codes:,} codes ({omop_pct:.1f}%)")
+        else:
+            results.add_warning(f"OMOP concept_id mapped for {omop_mapped:,}/{total_codes:,} codes ({omop_pct:.1f}%)", "Expected >=95%")
+
+        if "conditions" in loaded_tables:
+            cond_total, cond_icd = con.execute("""
+                SELECT
+                    COUNT(*),
+                    SUM(CASE WHEN c.icd10cm_code IS NOT NULL THEN 1 ELSE 0 END)
+                FROM conditions cond
+                JOIN codes c ON c.vocab = 'SNOMED' AND c.code = CAST(cond.code AS VARCHAR)
+                WHERE c.omop_domain_id = 'Condition'
+            """).fetchone()
+            icd_pct = (cond_icd / cond_total * 100) if cond_total and cond_total > 0 else 0.0
+            if icd_pct >= 99.0:
+                results.add_pass(f"ICD-10-CM crosswalk covers {cond_icd:,}/{cond_total:,} Condition-domain diagnosis rows ({icd_pct:.2f}%)")
+            else:
+                results.add_warning(f"ICD-10-CM crosswalk covers {cond_icd:,}/{cond_total:,} Condition-domain rows ({icd_pct:.2f}%)", "Expected >=99%")
+    else:
+        missing_xw = sorted(expected_xw_cols - code_cols)
+        results.add_warning("Crosswalk columns missing from codes.parquet", f"Missing: {', '.join(missing_xw)}")
 
 
 def test_data_quality(con: duckdb.DuckDBPyConnection, loaded_tables: set[str], results: TestResults):

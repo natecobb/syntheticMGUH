@@ -1,0 +1,2 @@
+provider_num,npi,name,address,city,state,zip,fips_county,lat,lon,phone,provider_type_code,category,emergency,upin,pin,region_code,bed_count,clia_lab_number
+095027,1205923604,BRIDGEPOINT SUB-ACUTE AND REHAB CAPITOL HILL,223 7TH STREET NE,WASHINGTON,DC,200027045,001,38.892955,-76.99582860721286,2025465700,00-18,02-03,true,,,03,117,

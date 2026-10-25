@@ -1,11 +1,8 @@
-PRIMARY HOSPICE DIAGNOSIS & STATUS:
-[Life-limiting condition and current comfort/symptom status]
+PRIMARY HOSPICE DIAGNOSIS & BACKGROUND:
+[Presenting symptoms, demographics, past medical history, and social context]
 
 MEDICATIONS & ALLERGIES:
-[Comfort medications, active regimen, and allergies]
+[Active comfort/maintenance medications and allergies]
 
-PALLIATIVE ASSESSMENT & INTERVENTIONS:
-[Symptom review and supportive/palliative care provided]
-
-GOALS OF CARE & PLAN:
-[Comfort measures, family/caregiver support, and ongoing hospice plan]
+PALLIATIVE ASSESSMENT & PLAN:
+[Hospice diagnoses, supportive procedures/interventions provided, and medication plan]

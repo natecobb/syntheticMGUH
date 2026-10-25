@@ -1,6 +1,6 @@
-45yo female presents with 2 days of abdominal pain. Denies nausea, vomiting, or fever. Past history notable for hypertension and type 2 diabetes on home regimen.
-Abdomen is soft with mild RLQ tenderness to palpation, no rebound or guarding.
-Impression: Gastritis vs. early appendicitis.
+52yo male presents with cough and nasal congestion. Past medical history notable for hypertension, hyperlipidemia, and seasonal rhinitis. Social history: married college graduate, middle socioeconomic background, non-smoker, insured by Medicare. No known allergies. Active medications: lisinopril 10 mg PO daily, atorvastatin 20 mg PO daily.
+Impression: Acute viral sinusitis; essential hypertension.
 Plan:
-1. Start esomeprazole 40 mg PO daily.
-2. Follow up in clinic in 48 hours; proceed to ED immediately for worsening pain or fever.
+1. Completed medication reconciliation and PHQ-2 depression screening.
+2. Administered influenza split-virus trivalent vaccine.
+3. Continue lisinopril 10 mg and atorvastatin 20 mg daily.

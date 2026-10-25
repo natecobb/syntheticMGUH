@@ -1,11 +1,8 @@
 CHIEF COMPLAINT & HPI:
-[Acuity, presenting symptoms, and relevant history]
+[Presenting symptoms, demographics, and past medical/social history]
 
-VITALS & PHYSICAL EXAM:
-[Triage vitals and emergency exam findings]
+ALLERGIES & HOME MEDICATIONS:
+[Allergies and baseline medications]
 
-ED COURSE & PROCEDURES:
-[Labs, imaging, medications given, and procedures performed in the ED]
-
-IMPRESSION & DISPOSITION:
-[Emergency diagnosis, discharge/admission disposition, and follow-up instructions]
+ED IMPRESSION, WORKUP & DISPOSITION:
+[Emergency diagnosis, ED procedures/labs/imaging performed, medications administered, and disposition]

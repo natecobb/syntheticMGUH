@@ -1,0 +1,2 @@
+provider_num,npi,name,address,city,state,zip,fips_county,lat,lon,phone,provider_type_code,category,emergency,upin,pin,region_code,bed_count,clia_lab_number
+092302,1427145176,GEORGETOWN UNIVERSITY HOSP,3800 RESEVOIR RD NW,WASHINGTON,DC,200072265,001,38.8950368,-77.0365427,2024443664,00-09,09-01,true,,090004,03,,

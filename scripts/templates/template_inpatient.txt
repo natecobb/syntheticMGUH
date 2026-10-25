@@ -1,11 +1,8 @@
 PRINCIPAL DIAGNOSIS & ADMISSION HPI:
-[Reason for hospitalization and presenting history]
+[Presenting complaints, demographics, and past medical/social history]
 
-BACKGROUND & HOME MEDICATIONS:
-[Past medical/social history, allergies, and baseline medications]
+ALLERGIES & BASELINE MEDICATIONS:
+[Allergies and home medication list]
 
-HOSPITAL COURSE & PROCEDURES:
-[Inpatient workup, procedures, and treatments administered]
-
-DISCHARGE PLAN & FOLLOW-UP:
-[Condition at discharge, medication reconciliation, and outpatient follow-up]
+HOSPITAL COURSE, PROCEDURES & DISCHARGE PLAN:
+[Admitting diagnoses, inpatient procedures/workup performed, and medications prescribed]

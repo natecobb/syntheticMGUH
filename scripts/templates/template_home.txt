@@ -1,11 +1,8 @@
-HOME VISIT SUMMARY & STATUS:
-[Reason for home health visit, patient environment, and interval status]
+HOME VISIT SUMMARY & BACKGROUND:
+[Presenting status, demographics, past medical history, and social environment]
 
 MEDICATION & ALLERGY REVIEW:
-[Active medications, adherence, and allergies]
+[Active medications and known allergies]
 
-ASSESSMENT & INTERVENTIONS:
-[Vitals, clinical assessment, and skilled nursing/therapy interventions performed]
-
-CARE PLAN & COORDINATION:
-[Ongoing home care goals, patient/caregiver education, and next visit plan]
+ASSESSMENT, INTERVENTIONS & CARE PLAN:
+[Active conditions, home health procedures/interventions performed, and medication updates]

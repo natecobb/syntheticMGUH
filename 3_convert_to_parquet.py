@@ -483,6 +483,40 @@ def main(
               AND CAST(ct.procedurecode AS VARCHAR) NOT IN (SELECT code FROM codes)
         """)
 
+    crosswalk_path = Path(__file__).resolve().parent / "synthea" / "athena_code_crosswalk.parquet"
+    def _enrich_codes_with_crosswalk():
+        if not crosswalk_path.exists():
+            return
+        con.execute(f"""
+            CREATE OR REPLACE TABLE codes AS
+            SELECT
+                c.vocab,
+                c.code,
+                c.description,
+                xw.omop_concept_id,
+                COALESCE(
+                    xw.omop_domain_id,
+                    CASE
+                        WHEN c.vocab IN ('RxNorm', 'CVX') OR c.description LIKE '%(dose form)' OR c.description LIKE '%(product)' THEN 'Drug'
+                        WHEN c.description LIKE '%(disorder)' THEN 'Condition'
+                        WHEN c.description LIKE '%(procedure)' OR c.description LIKE '%(regime/therapy)' THEN 'Procedure'
+                        WHEN c.description LIKE '%(physical object)' THEN 'Device'
+                        WHEN c.description LIKE '%(finding)' OR c.description LIKE '%(situation)' OR c.description LIKE '%(observable entity)' THEN 'Observation'
+                        WHEN c.vocab IN ('LOINC', 'DICOM-DCM', 'DICOM-SOP') THEN 'Measurement'
+                        ELSE NULL
+                    END
+                ) AS omop_domain_id,
+                xw.icd10cm_code,
+                xw.icd10cm_description,
+                xw.hcpcs_code
+            FROM codes c
+            LEFT JOIN read_parquet('{crosswalk_path}') xw
+              ON c.vocab = xw.vocab AND c.code = xw.code
+            ORDER BY c.vocab, c.code
+        """)
+
+    _enrich_codes_with_crosswalk()
+
     # Show code dictionary stats
     vocab_counts = con.execute("""
         SELECT vocab, COUNT(*) AS count
@@ -626,6 +660,7 @@ def main(
                 )
                 ORDER BY vocab, code
             """)
+            _enrich_codes_with_crosswalk()
 
         # 2. Merge organizations (sum revenue & utilization by id)
         orgs_pq = output_path / "organizations.parquet"

@@ -1,7 +1,9 @@
-- HPI: 45yo F w/ abd pain x 2d; neg N/V/fevers
-- PMH: HTN, T2DM (controlled)
-- Exam: Soft, non-distended; mild RLQ TTP; neg rebound/guarding
-- Assessment: Acute gastritis vs early appendicitis
+- CC/HPI: 52yo M w/ cough, nasal congestion
+- PMH: HTN, hyperlipidemia, seasonal rhinitis
+- Social: Married, college grad, middle SES, non-smoker, Medicare
+- Allergies / Meds: NKDA | lisinopril 10mg PO qd, atorvastatin 20mg PO qd
+- Assessment: Acute viral sinusitis; essential HTN
 - Plan:
-  * Nexium 40mg PO daily
-  * Recheck 48 hrs; strict ED return precautions reviewed
+  * Completed med reconciliation & PHQ-2 screening
+  * Administered influenza split-virus vaccine
+  * Continue home lisinopril & atorvastatin

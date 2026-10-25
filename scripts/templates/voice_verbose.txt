@@ -1,7 +1,7 @@
-The patient is a 45-year-old female who presents today with complaints of abdominal pain which has been ongoing for approximately two days. She denies any associated nausea, vomiting, or fever. Her past medical history is significant for hypertension and type 2 diabetes mellitus, both of which are currently managed with medication.
+The patient is a 52-year-old male who presents today reporting cough and nasal congestion. His past medical history is significant for essential hypertension, hyperlipidemia, and seasonal allergic rhinitis. Regarding his social history, he is a married college graduate from a middle socioeconomic background who has never smoked and is insured through Medicare.
 
-On physical examination today, the abdomen is soft and non-distended. There is mild tenderness to palpation noted in the right lower quadrant, however there is no rebound tenderness or guarding appreciated.
+He has no known drug allergies. His current active medications include lisinopril 10 mg orally once daily and atorvastatin 20 mg orally once daily.
 
-My assessment is that this is likely gastritis, though we cannot completely rule out early appendicitis at this time.
+My assessment for today's visit is acute viral sinusitis in the setting of baseline essential hypertension.
 
-The plan is to start her on Nexium 40 milligrams once daily for acid suppression. I have advised the patient to follow up with me in 48 hours for re-evaluation, or to proceed to the emergency room if her symptoms worsen before that time.
+For the plan of care, we completed a full medication reconciliation and performed a PHQ-2 depression screening. He received the trivalent split-virus influenza immunization today and will continue lisinopril 10 mg and atorvastatin 20 mg daily.

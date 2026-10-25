@@ -1,0 +1,2 @@
+provider_num,npi,name,address,city,state,zip,fips_county,lat,lon,phone,provider_type_code,category,emergency,upin,pin,region_code,bed_count,clia_lab_number
+92002,1285772772,BRIDGEPOINT HOSPITAL CAPITOL HILL,223 7TH STREET NE,WASHINGTON,DC,200027045,001,38.892955,-76.99582860721286,2026750400,00-09,01-02,false,,,03,60,

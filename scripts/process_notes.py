@@ -100,16 +100,73 @@ def build_system_prompt(template: Optional[str] = None, voice_example: Optional[
         parts.append(f"\nUse this note template/structure:\n{template.strip()}")
 
     if voice_example:
-        parts.append(f"\nMatch the style and voice of this physician note:\n{voice_example.strip()}")
+        parts.append(
+            "\nStyle Reference Only (adopt ONLY the tone, sentence structure, formatting, and abbreviation density "
+            "of this example—NEVER copy any symptoms, diagnoses, procedures, or medications from this example):\n"
+            f"{voice_example.strip()}"
+        )
 
     parts.append(
-        "\nGuidelines:\n"
-        "- Maintain ONLY the clinical facts explicitly provided; do NOT invent exam findings, vitals, or history\n"
+        "\nStrict Guidelines:\n"
+        "- Include all clinical facts explicitly present in the user's Structured Note (including Vital Signs, Exam Findings, Screening Scores, and Encounter Reason when provided)\n"
+        "- Do NOT invent or add physical exam findings, vital signs, review-of-systems negatives, or return precautions that are not in the Structured Note\n"
         "- Remove markdown headers (# symbols)\n"
-        "- Strictly match the length, brevity, and abbreviation density of the voice example (if provided)\n"
-        "- Add the occasional realistic clinical abbreviation or minor typo if consistent with the voice"
+        "- Strictly match the length, brevity, and abbreviation density of the Style Reference"
     )
     return "\n".join(parts)
+
+
+_HURRIED_WORD_SWAPS = {
+    "patient": "pt",
+    "presents": "presnets",
+    "presenting": "presneting",
+    "history": "hx",
+    "medications": "meds",
+    "medication": "med",
+    "assessment": "assesment",
+    "screening": "screenign",
+    "performed": "preformed",
+    "administered": "adminstered",
+    "continued": "contd",
+    "continue": "cont",
+    "referral": "refferal",
+    "referred": "reffered",
+    "evaluation": "eval",
+    "evaluated": "evald",
+    "hypertension": "htn",
+    "diabetes": "dm",
+    "prescription": "rx",
+    "prescribed": "rx'd",
+    "without": "w/o",
+    "with": "w",
+}
+
+
+def apply_hurried_typos(text: str, seed_str: str = "") -> str:
+    """
+    Post-process notes for voice_hurried_typos so small RLHF models that auto-correct spelling
+    still exhibit realistic lowercase hurried typing and keyboard transpositions while preserving
+    all numbers and dosages.
+    """
+    import hashlib
+    out = text.lower()
+    out = re.sub(r"\bfollow[\s-]+up\b", "follwo up", out)
+    out = re.sub(r"\bno known (drug )?allergies\b", "nkda", out)
+
+    def _transform_token(match: re.Match) -> str:
+        word = match.group(0)
+        if word in _HURRIED_WORD_SWAPS:
+            return _HURRIED_WORD_SWAPS[word]
+        if len(word) >= 6 and word.isalpha():
+            h = hashlib.md5(f"{seed_str}:{word}".encode("utf-8")).digest()[0]
+            if h < 10:  # ~4% of long alphabetic words get an interior adjacent-letter transposition
+                pos = 2 + (h % (len(word) - 3))
+                chars = list(word)
+                chars[pos], chars[pos + 1] = chars[pos + 1], chars[pos]
+                return "".join(chars)
+        return word
+
+    return re.sub(r"\b[a-z]{4,}\b", _transform_token, out)
 
 
 class StyleResolver:
@@ -409,6 +466,9 @@ def transform_note_with_llm(
         if not response_text:
             return None, {"error": "Empty content after stripping thinking"}
 
+        if voice_path and "voice_hurried_typos" in voice_path:
+            response_text = apply_hurried_typos(response_text, seed_str=note_text[:120])
+
         usage = result.get("usage", {})
         actual_prompt_tokens = usage.get("prompt_tokens", prompt_tokens_est)
         actual_output_tokens = usage.get("completion_tokens", estimate_tokens(response_text))
@@ -479,47 +539,100 @@ def transform_notes_pass2(
     total_notes = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
     print(f"✓ Loaded {total_notes:,} notes")
 
-    # Join encounterclass and provider metadata if encounters.parquet exists alongside notes.parquet
+    # Join encounterclass, provider metadata, encounter reason, and real-time observations
+    # (vital-signs, exam findings, and waiting-room screening total scores)
     encounters_file = parquet_dir / "encounters.parquet"
     providers_file = parquet_dir / "providers.parquet"
     organizations_file = parquet_dir / "organizations.parquet"
+    observations_file = parquet_dir / "observations.parquet"
+    codes_file = parquet_dir / "codes.parquet"
 
     if encounters_file.exists():
-        con.execute(f"CREATE TABLE encounters AS SELECT id, encounterclass, provider FROM read_parquet('{encounters_file}')")
-        if providers_file.exists() and organizations_file.exists():
-            con.execute(f"CREATE TABLE providers AS SELECT id, CAST(npi AS VARCHAR) AS npi, organization FROM read_parquet('{providers_file}')")
-            con.execute(f"CREATE TABLE organizations AS SELECT id, name FROM read_parquet('{organizations_file}')")
-            con.execute("""
-                CREATE TABLE notes_enriched AS
+        con.execute(f"""
+            CREATE TABLE encounters AS
+            SELECT id, encounterclass, provider, CAST(code AS VARCHAR) AS code, CAST(reasoncode AS VARCHAR) AS reasoncode
+            FROM read_parquet('{encounters_file}')
+        """)
+        if codes_file.exists():
+            con.execute(f"CREATE TABLE codes AS SELECT code, vocab, description FROM read_parquet('{codes_file}')")
+        else:
+            con.execute("CREATE TABLE codes (code VARCHAR, vocab VARCHAR, description VARCHAR)")
+
+        if observations_file.exists() and codes_file.exists():
+            print("Enriching notes with encounter Vital Signs, Exam Findings, and Screening Scores...")
+            con.execute(f"""
+                CREATE TABLE obs_summary AS
                 SELECT
-                    n.patient,
-                    n.date,
-                    n.note_text,
-                    n.encounter,
-                    e.encounterclass,
-                    e.provider AS provider_id,
-                    pr.npi AS provider_npi,
-                    o.name AS organization_name
-                FROM notes n
-                LEFT JOIN encounters e ON n.encounter = e.id
-                LEFT JOIN providers pr ON e.provider = pr.id
-                LEFT JOIN organizations o ON pr.organization = o.id
+                    ob.encounter,
+                    STRING_AGG(
+                        c.description || ': ' || ob.value ||
+                        CASE
+                            WHEN ob.units IS NULL OR ob.units IN ('{{nominal}}', '{{score}}', '{{ratio}}', '{{logmar}}') THEN ''
+                            WHEN ob.units = 'mm[Hg]' THEN ' mmHg'
+                            ELSE ' ' || ob.units
+                        END,
+                        '; ' ORDER BY c.description
+                    ) FILTER (WHERE ob.category = 'vital-signs') AS vitals_summary,
+                    STRING_AGG(
+                        c.description || ': ' || ob.value ||
+                        CASE
+                            WHEN ob.units IS NULL OR ob.units IN ('{{nominal}}', '{{score}}', '{{ratio}}', '{{logmar}}') THEN ''
+                            ELSE ' ' || ob.units
+                        END,
+                        '; ' ORDER BY c.description
+                    ) FILTER (WHERE ob.category = 'exam' AND c.description NOT ILIKE '%certificate of death%') AS exam_summary,
+                    STRING_AGG(
+                        c.description || ': ' || ob.value,
+                        '; ' ORDER BY c.description
+                    ) FILTER (WHERE ob.category = 'survey' AND c.description ILIKE '%score%') AS screening_summary
+                FROM read_parquet('{observations_file}') ob
+                JOIN codes c
+                  ON CAST(ob.code AS VARCHAR) = c.code AND c.vocab = 'LOINC'
+                WHERE ob.category IN ('vital-signs', 'exam')
+                   OR (ob.category = 'survey' AND c.description ILIKE '%score%')
+                GROUP BY ob.encounter
             """)
         else:
             con.execute("""
-                CREATE TABLE notes_enriched AS
-                SELECT
-                    n.patient,
-                    n.date,
-                    n.note_text,
-                    n.encounter,
-                    e.encounterclass,
-                    e.provider AS provider_id,
-                    NULL::VARCHAR AS provider_npi,
-                    NULL::VARCHAR AS organization_name
-                FROM notes n
-                LEFT JOIN encounters e ON n.encounter = e.id
+                CREATE TABLE obs_summary (
+                    encounter VARCHAR,
+                    vitals_summary VARCHAR,
+                    exam_summary VARCHAR,
+                    screening_summary VARCHAR
+                )
             """)
+
+        if providers_file.exists() and organizations_file.exists():
+            con.execute(f"CREATE TABLE providers AS SELECT id, CAST(npi AS VARCHAR) AS npi, organization FROM read_parquet('{providers_file}')")
+            con.execute(f"CREATE TABLE organizations AS SELECT id, name FROM read_parquet('{organizations_file}')")
+        else:
+            con.execute("CREATE TABLE providers (id VARCHAR, npi VARCHAR, organization VARCHAR)")
+            con.execute("CREATE TABLE organizations (id VARCHAR, name VARCHAR)")
+
+        con.execute("""
+            CREATE TABLE notes_enriched AS
+            SELECT
+                n.patient,
+                n.date,
+                n.note_text,
+                n.note_text
+                    || COALESCE('\n\n# Encounter Reason\n' || c_reas.description, '')
+                    || COALESCE('\n\n# Vital Signs\n' || os.vitals_summary, '')
+                    || COALESCE('\n\n# Exam Findings\n' || os.exam_summary, '')
+                    || COALESCE('\n\n# Screening Scores\n' || os.screening_summary, '')
+                    AS prompt_note_text,
+                n.encounter,
+                e.encounterclass,
+                e.provider AS provider_id,
+                pr.npi AS provider_npi,
+                o.name AS organization_name
+            FROM notes n
+            LEFT JOIN encounters e ON n.encounter = e.id
+            LEFT JOIN providers pr ON e.provider = pr.id
+            LEFT JOIN organizations o ON pr.organization = o.id
+            LEFT JOIN codes c_reas ON e.reasoncode = c_reas.code AND c_reas.vocab = 'SNOMED'
+            LEFT JOIN obs_summary os ON n.encounter = os.encounter
+        """)
     else:
         con.execute("""
             CREATE TABLE notes_enriched AS
@@ -527,6 +640,7 @@ def transform_notes_pass2(
                 patient,
                 date,
                 note_text,
+                note_text AS prompt_note_text,
                 encounter,
                 NULL::VARCHAR AS encounterclass,
                 NULL::VARCHAR AS provider_id,
@@ -560,11 +674,23 @@ def transform_notes_pass2(
             SELECT * FROM notes_enriched
         """)
 
+    # Assign 100-patient cohorts so complete patients finish every ~100 patients
+    # while still grouping by (provider_id, encounterclass) within each cohort for KV prefix caching
+    con.execute("""
+        CREATE TABLE notes_cohorted AS
+        SELECT
+            *,
+            (DENSE_RANK() OVER (ORDER BY patient) - 1) // 100 AS patient_cohort
+        FROM notes_to_process
+    """)
+    con.execute("DROP TABLE notes_to_process")
+    con.execute("ALTER TABLE notes_cohorted RENAME TO notes_to_process")
+
     if limit:
         con.execute(f"""
             CREATE TABLE notes_to_process_limited AS
             SELECT * FROM notes_to_process
-            ORDER BY provider_id, encounterclass, patient, date
+            ORDER BY patient_cohort, provider_id, encounterclass, patient, date
             LIMIT {limit}
         """)
         con.execute("DROP TABLE notes_to_process")
@@ -582,19 +708,19 @@ def transform_notes_pass2(
             "transformed": 0
         }
 
-    # Sort by (provider_id, encounterclass) so identical (voice, template) system prompts run consecutively
     notes_to_transform = con.execute("""
         SELECT
             patient,
             CAST(date AS VARCHAR) AS date_str,
             note_text,
+            prompt_note_text,
             encounter,
             encounterclass,
             provider_id,
             provider_npi,
             organization_name
         FROM notes_to_process
-        ORDER BY provider_id, encounterclass, patient, date
+        ORDER BY patient_cohort, provider_id, encounterclass, patient, date
     """).fetchall()
 
     print(f"\nTransforming {len(notes_to_transform):,} notes...")
@@ -620,7 +746,7 @@ def transform_notes_pass2(
     transformed_records = []
 
     def _worker(idx_and_row):
-        idx, (patient, date_str, note_text, encounter, encounterclass, provider_id, provider_npi, org_name) = idx_and_row
+        idx, (patient, date_str, note_text, prompt_note_text, encounter, encounterclass, provider_id, provider_npi, org_name) = idx_and_row
         t_path, v_path, system_prompt = style_resolver.resolve(
             encounterclass=encounterclass,
             provider_id=provider_id,
@@ -631,7 +757,7 @@ def transform_notes_pass2(
             session=session,
             base_url=base_url,
             api_key=api_key,
-            note_text=note_text,
+            note_text=prompt_note_text,
             system_prompt=system_prompt,
             model=model,
             temperature=temperature,
@@ -676,35 +802,38 @@ def transform_notes_pass2(
                 f"{out_tok} out_tok{cache_str} in {req_time:.2f}s | "
                 f"Net: {eff_out_tps:.1f} out_tok/s ({eff_notes_ps:.2f} notes/s)"
             )
-
-            if len(transformed_records) >= batch_size:
-                _write_batch_to_parquet(con, transformed_records, output_file)
-                transformed_records = []
         else:
             total_failed += 1
             err_msg = metadata.get("error", "Unknown error") if metadata else "Unknown error"
             print(f"  [{total_transformed + total_failed}/{len(notes_to_transform)}] {patient[:8]}... ✗ ({err_msg})")
 
-    # Prime the KV prefix cache with the first note before fanning out concurrent workers
-    remaining_notes = notes_to_transform
-    if len(notes_to_transform) > 1 and concurrency > 1:
-        _, patient, date_str, note_text, encounter, natural_text, metadata = _worker((1, notes_to_transform[0]))
-        _handle_result(patient, date_str, note_text, encounter, natural_text, metadata)
-        remaining_notes = notes_to_transform[1:]
+    # Process in chunks of batch_size to keep memory bounded on 700k+ note datasets
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        for chunk_start in range(0, len(notes_to_transform), batch_size):
+            chunk = notes_to_transform[chunk_start:chunk_start + batch_size]
+            if not chunk:
+                break
 
-    if remaining_notes:
-        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            # Prime prefix cache on first note of first chunk if running concurrent workers
+            if chunk_start == 0 and len(chunk) > 1 and concurrency > 1:
+                _, patient, date_str, note_text, encounter, natural_text, metadata = _worker((1, chunk[0]))
+                _handle_result(patient, date_str, note_text, encounter, natural_text, metadata)
+                chunk = chunk[1:]
+                base_idx = 2
+            else:
+                base_idx = chunk_start + 1
+
             futures = [
                 executor.submit(_worker, (i, row))
-                for i, row in enumerate(remaining_notes, 2 if len(notes_to_transform) > len(remaining_notes) else 1)
+                for i, row in enumerate(chunk, base_idx)
             ]
-
             for future in as_completed(futures):
                 _, patient, date_str, note_text, encounter, natural_text, metadata = future.result()
                 _handle_result(patient, date_str, note_text, encounter, natural_text, metadata)
 
-    if transformed_records:
-        _write_batch_to_parquet(con, transformed_records, output_file)
+            if transformed_records:
+                _write_batch_to_parquet(con, transformed_records, output_file)
+                transformed_records = []
 
     wall_total = time.time() - wall_start
     con.close()
@@ -722,7 +851,7 @@ def transform_notes_pass2(
 
 
 def _write_batch_to_parquet(con, records: List[Tuple], output_file: Path):
-    """Vectorized append of transformed note records to Parquet."""
+    """Vectorized append of transformed note records to Parquet with atomic replacement and patient progress."""
     if not records:
         return
 
@@ -743,6 +872,7 @@ def _write_batch_to_parquet(con, records: List[Tuple], output_file: Path):
         records
     )
 
+    tmp_file = output_file.parent / f".tmp_{output_file.name}"
     if output_file.exists():
         con.execute(f"""
             CREATE TABLE existing_notes AS
@@ -762,18 +892,38 @@ def _write_batch_to_parquet(con, records: List[Tuple], output_file: Path):
                 SELECT * FROM temp_batch
                 ORDER BY patient, date
             )
-            TO '{output_file}'
+            TO '{tmp_file}'
             (FORMAT PARQUET, COMPRESSION ZSTD)
         """)
         con.execute("DROP TABLE existing_notes")
     else:
         con.execute(f"""
             COPY (SELECT * FROM temp_batch ORDER BY patient, date)
-            TO '{output_file}'
+            TO '{tmp_file}'
             (FORMAT PARQUET, COMPRESSION ZSTD)
         """)
 
-    print(f"    ✓ Checkpointed batch of {len(records)} notes to {output_file.name}")
+    tmp_file.replace(output_file)
+
+    stats = con.execute(f"""
+        SELECT
+            (SELECT COUNT(*) FROM read_parquet('{output_file}')) AS total_done,
+            (SELECT COUNT(*) FROM (
+                SELECT n.patient
+                FROM notes n
+                LEFT JOIN read_parquet('{output_file}') l
+                  ON n.patient = l.patient AND n.encounter = l.encounter
+                GROUP BY n.patient
+                HAVING COUNT(*) = COUNT(l.encounter)
+            )) AS patients_done,
+            (SELECT COUNT(DISTINCT patient) FROM notes) AS total_patients
+    """).fetchone()
+
+    print(
+        f"    ✓ Checkpointed +{len(records)} notes → {output_file.name} "
+        f"[Total: {stats[0]:,} notes | {stats[1]:,}/{stats[2]:,} patients 100% complete]",
+        flush=True
+    )
     con.execute("DROP TABLE temp_batch")
 
 

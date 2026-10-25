@@ -3,9 +3,9 @@
 """
 Build DC/MedStar-specific provider CSV files for Synthea.
 
-Reads default provider CSVs directly from bin/synthea-with-dependencies.jar
+Reads default provider CSVs directly from synthea/bin/synthea-with-dependencies.jar
 (or from a source directory if --source points to a folder) and writes
-filtered DC/MedStar provider CSVs to ./providers/syntheticMGUH/.
+filtered DC/MedStar provider CSVs to ./synthea/providers/syntheticMGUH/.
 """
 
 import os
@@ -93,10 +93,10 @@ if __name__ == '__main__':
     from argparse import ArgumentParser
 
     parser = ArgumentParser(prog='1_build_providers.py')
-    parser.add_argument('--source', nargs='?', default="bin/synthea-with-dependencies.jar",
-                        help='Synthea fat JAR or providers source directory (default: bin/synthea-with-dependencies.jar)')
-    parser.add_argument('--target', nargs='?', default="providers/syntheticMGUH",
-                        help='Target directory to write custom files to (default: providers/syntheticMGUH)')
+    parser.add_argument('--source', nargs='?', default="synthea/bin/synthea-with-dependencies.jar",
+                        help='Synthea fat JAR or providers source directory (default: synthea/bin/synthea-with-dependencies.jar)')
+    parser.add_argument('--target', nargs='?', default="synthea/providers/syntheticMGUH",
+                        help='Target directory to write custom files to (default: synthea/providers/syntheticMGUH)')
     parser.add_argument('--hospitals', nargs='?', default="MGUH",
                         choices=['both', 'MGUH', 'WHC', 'MWHC'],
                         help='Hospitals to include: both, MGUH or WHC.')
