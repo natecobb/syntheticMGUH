@@ -1,0 +1,524 @@
+{
+  "version": "1.4-demo",
+  "step_hours": 24,
+  "assumptions": [
+    "All numeric laboratory endpoints, time constants, complication probabilities, and outcome probabilities are illustrative synthetic parameters, not fitted clinical estimates.",
+    "Outcome probabilities apply once per completed 24-hour model step, conditional on etiology and current severity; they are not annual risks or transplant eligibility criteria.",
+    "Severity is a synthetic acute functional impairment index from 0 to 1, separate from hepatocyte injury activity and chronic baseline abnormalities.",
+    "Clinical pattern references: https://www.aasld.org/liver-fellow-network/core-series/back-basics/defining-and-managing-acute-liver-failure and https://www.aasld.org/liver-fellow-network/core-series/clinical-pearls/management-acute-chronic-liver-failure"
+  ],
+  "labs": {
+    "inr": {
+      "code": "6301-6",
+      "display": "INR in Platelet poor plasma by Coagulation assay",
+      "unit": "{INR}"
+    },
+    "bilirubin": {
+      "code": "1975-2",
+      "display": "Bilirubin.total [Mass/volume] in Serum or Plasma",
+      "unit": "mg/dL"
+    },
+    "creatinine": {
+      "code": "2160-0",
+      "display": "Creatinine [Mass/volume] in Serum or Plasma",
+      "unit": "mg/dL"
+    },
+    "sodium": {
+      "code": "2951-2",
+      "display": "Sodium [Moles/volume] in Serum or Plasma",
+      "unit": "mmol/L"
+    },
+    "albumin": {
+      "code": "1751-7",
+      "display": "Albumin [Mass/volume] in Serum or Plasma",
+      "unit": "g/dL"
+    },
+    "glucose": {
+      "code": "2345-7",
+      "display": "Glucose [Mass/volume] in Serum or Plasma",
+      "unit": "mg/dL"
+    },
+    "lactate": {
+      "code": "2524-7",
+      "display": "Lactate [Moles/volume] in Serum or Plasma",
+      "unit": "mmol/L"
+    },
+    "ast": {
+      "code": "1920-8",
+      "display": "Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma",
+      "unit": "U/L"
+    },
+    "alt": {
+      "code": "1742-6",
+      "display": "Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma",
+      "unit": "U/L"
+    }
+  },
+  "baseline": {
+    "inr": 1.0,
+    "bilirubin": 0.8,
+    "creatinine": 0.9,
+    "sodium": 140,
+    "albumin": 4.2,
+    "glucose": 95,
+    "lactate": 1.0,
+    "ast": 25,
+    "alt": 22
+  },
+  "cirrhosis_baseline": {
+    "inr": 1.4,
+    "bilirubin": 2.0,
+    "creatinine": 0.9,
+    "sodium": 135,
+    "albumin": 3.3,
+    "glucose": 95,
+    "lactate": 1.2,
+    "ast": 65,
+    "alt": 40
+  },
+  "severity_bands": {
+    "moderate": 0.35,
+    "severe": 0.75
+  },
+  "care": {
+    "version": "1.1-demo",
+    "ward_days": 2,
+    "evaluation_days": {
+      "acute": 1,
+      "chronic": 3
+    },
+    "candidate_probability": {
+      "acute": 0.8,
+      "chronic": 0.65
+    },
+    "graft_probability_per_day": {
+      "acute": 0.35,
+      "chronic": 0.15
+    },
+    "surgery_hours": 6,
+    "postoperative_severity": 0.8,
+    "followup_days_after_discharge": [
+      7,
+      14,
+      30,
+      90,
+      180
+    ],
+    "rejection_probability": 0.15,
+    "rejection_severity": 0.4,
+    "tacrolimus_monitoring_range": [
+      6,
+      10
+    ],
+    "assumptions": [
+      "Candidacy, graft availability, rejection, timing, laboratory, and outcome parameters remain synthetic assumptions. Only the aggregate ICU-to-transplant target is fitted to the user-defined scenario, not observed MedStar outcomes.",
+      "Candidacy is drawn once per evaluation; graft availability is drawn once per completed waiting day after competing clinical outcomes. Alcohol-use status alone never determines candidacy.",
+      "There is no forced recovery/death horizon or automatic waitlist expiry. Daily competing outcomes continue; an observation cutoff must be reported as censoring, never converted into a clinical outcome. This is an inpatient waiting model, not a longitudinal outpatient waitlist.",
+      "Continuous organ support is represented by device and medication intervals, with care plans and instantaneous procedure markers; surgery is a timed procedure. Devices retain timestamp precision where Synthea care-plan CSVs retain only dates. No ICU-specific encounter class or hospital transfers are introduced.",
+      "One optional mild rejection episode at the first outpatient visit resolves under a simplified treatment/monitoring course. Drug product strengths and levels are synthetic record content, not a prescribing protocol."
+    ],
+    "evaluation_odds_multiplier": 0.75
+  },
+  "profiles": {
+    "alcohol_cirrhosis": {
+      "recovery_days": 28,
+      "deterioration_days": 7,
+      "injury_decay_days": 10,
+      "deltas": {
+        "inr": 3.0,
+        "bilirubin": 15,
+        "creatinine": 3.0,
+        "sodium": -8,
+        "albumin": -0.8,
+        "glucose": -45,
+        "lactate": 5.0,
+        "ast": 400,
+        "alt": 220
+      },
+      "outcomes": {
+        "mild": {
+          "recovery": 0.12,
+          "deterioration": 0.03,
+          "death": 0.001,
+          "transplant_evaluation": 0.0,
+          "continue": 0.849
+        },
+        "moderate": {
+          "recovery": 0.08,
+          "deterioration": 0.08,
+          "death": 0.01,
+          "transplant_evaluation": 0.03,
+          "continue": 0.8
+        },
+        "severe": {
+          "recovery": 0.04,
+          "deterioration": 0.1,
+          "death": 0.05,
+          "transplant_evaluation": 0.1,
+          "continue": 0.71
+        }
+      },
+      "complications": {
+        "mild": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "moderate": [
+          0.25,
+          0.05,
+          0.1
+        ],
+        "severe": [
+          0.65,
+          0.3,
+          0.45
+        ]
+      }
+    },
+    "acetaminophen": {
+      "recovery_days": 7,
+      "deterioration_days": 3,
+      "injury_decay_days": 2,
+      "deltas": {
+        "inr": 7.0,
+        "bilirubin": 8,
+        "creatinine": 3.5,
+        "sodium": -5,
+        "albumin": -0.4,
+        "glucose": -50,
+        "lactate": 7.0,
+        "ast": 8000,
+        "alt": 7000
+      },
+      "outcomes": {
+        "mild": {
+          "recovery": 0.3,
+          "deterioration": 0.04,
+          "death": 0.001,
+          "transplant_evaluation": 0.0,
+          "continue": 0.659
+        },
+        "moderate": {
+          "recovery": 0.2,
+          "deterioration": 0.1,
+          "death": 0.01,
+          "transplant_evaluation": 0.05,
+          "continue": 0.64
+        },
+        "severe": {
+          "recovery": 0.1,
+          "deterioration": 0.1,
+          "death": 0.05,
+          "transplant_evaluation": 0.15,
+          "continue": 0.6
+        }
+      },
+      "complications": {
+        "mild": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "moderate": [
+          0.3,
+          0.05,
+          0.1
+        ],
+        "severe": [
+          0.7,
+          0.25,
+          0.4
+        ]
+      }
+    },
+    "non_acetaminophen": {
+      "recovery_days": 21,
+      "deterioration_days": 10,
+      "injury_decay_days": 5,
+      "deltas": {
+        "inr": 5.0,
+        "bilirubin": 25,
+        "creatinine": 3.0,
+        "sodium": -5,
+        "albumin": -0.5,
+        "glucose": -45,
+        "lactate": 5.0,
+        "ast": 3500,
+        "alt": 2800
+      },
+      "outcomes": {
+        "mild": {
+          "recovery": 0.15,
+          "deterioration": 0.05,
+          "death": 0.001,
+          "transplant_evaluation": 0.0,
+          "continue": 0.799
+        },
+        "moderate": {
+          "recovery": 0.08,
+          "deterioration": 0.12,
+          "death": 0.02,
+          "transplant_evaluation": 0.08,
+          "continue": 0.7
+        },
+        "severe": {
+          "recovery": 0.03,
+          "deterioration": 0.12,
+          "death": 0.08,
+          "transplant_evaluation": 0.2,
+          "continue": 0.57
+        }
+      },
+      "complications": {
+        "mild": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "moderate": [
+          0.2,
+          0.05,
+          0.1
+        ],
+        "severe": [
+          0.6,
+          0.25,
+          0.4
+        ]
+      }
+    },
+    "postoperative": {
+      "recovery_days": 14,
+      "deterioration_days": 7,
+      "injury_decay_days": 3,
+      "deltas": {
+        "inr": 2.0,
+        "bilirubin": 10,
+        "creatinine": 3.0,
+        "sodium": -5,
+        "albumin": -1.0,
+        "glucose": -30,
+        "lactate": 5.0,
+        "ast": 1500,
+        "alt": 1200
+      },
+      "outcomes": {
+        "mild": {
+          "recovery": 0.2,
+          "deterioration": 0.02,
+          "death": 0.001,
+          "transplant_evaluation": 0.0,
+          "continue": 0.779
+        },
+        "moderate": {
+          "recovery": 0.12,
+          "deterioration": 0.05,
+          "death": 0.01,
+          "transplant_evaluation": 0.0,
+          "continue": 0.82
+        },
+        "severe": {
+          "recovery": 0.06,
+          "deterioration": 0.1,
+          "death": 0.04,
+          "transplant_evaluation": 0.0,
+          "continue": 0.8
+        }
+      },
+      "complications": {
+        "mild": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "moderate": [
+          0.2,
+          0.05,
+          0.1
+        ],
+        "severe": [
+          0.55,
+          0.3,
+          0.4
+        ]
+      }
+    },
+    "cirrhosis": {
+      "recovery_days": 28,
+      "deterioration_days": 7,
+      "injury_decay_days": 10,
+      "deltas": {
+        "inr": 3.0,
+        "bilirubin": 15,
+        "creatinine": 3.0,
+        "sodium": -8,
+        "albumin": -0.8,
+        "glucose": -45,
+        "lactate": 5.0,
+        "ast": 400,
+        "alt": 220
+      },
+      "outcomes": {
+        "mild": {
+          "recovery": 0.12,
+          "deterioration": 0.03,
+          "death": 0.001,
+          "transplant_evaluation": 0.0,
+          "continue": 0.849
+        },
+        "moderate": {
+          "recovery": 0.08,
+          "deterioration": 0.08,
+          "death": 0.01,
+          "transplant_evaluation": 0.03,
+          "continue": 0.8
+        },
+        "severe": {
+          "recovery": 0.04,
+          "deterioration": 0.1,
+          "death": 0.05,
+          "transplant_evaluation": 0.1,
+          "continue": 0.71
+        }
+      },
+      "complications": {
+        "mild": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "moderate": [
+          0.25,
+          0.05,
+          0.1
+        ],
+        "severe": [
+          0.65,
+          0.3,
+          0.45
+        ]
+      }
+    }
+  },
+  "calibration": {
+    "version": "1.0",
+    "catchment": "Washington-Arlington-Alexandria DC metropolitan area",
+    "referral_share": 0.25,
+    "icu_transplant_target": 0.25,
+    "target_definition": "Completed liver transplantation during the index liver ICU/inpatient course divided by all index liver ICU entrants, including recipients who subsequently die.",
+    "target_source": "User-defined scenario: 25% of regional liver cases referred to MGUH; 25% of liver ICU entrants receive a transplant.",
+    "cohort": {
+      "etiology_weights": {
+        "alcohol_cirrhosis": 0.3333333333333333,
+        "acetaminophen": 0.3333333333333333,
+        "non_acetaminophen": 0.3333333333333333
+      },
+      "initial_severity_range": [
+        0.75,
+        1.0
+      ],
+      "age_years": 50,
+      "trajectory": "stable",
+      "regional_cases_per_year": null,
+      "icu_fraction_among_referred": null
+    },
+    "simulation": {
+      "regional_cases_per_seed": 2000,
+      "fit_seeds": [
+        1101,
+        2202,
+        3303
+      ],
+      "validation_seeds": [
+        4404,
+        5505,
+        6606
+      ],
+      "observation_days": 365,
+      "fit_tolerance": 0.005,
+      "validation_tolerance": 0.025,
+      "max_fit_iterations": 12
+    },
+    "assumptions": [
+      "The balanced etiology mix, severe presentation range, stable initial trajectory, and age 50 are calibration fixtures, not measured MGUH case mix. Refit when these change.",
+      "The runner samples regional ICU-eligible cases, applies referral once per case, and follows referred cases through the real Synthea engine. Routine regional cases may not require ICU.",
+      "The 25% transplant target is pooled across etiologies, not imposed separately on each cause. Transplantation is counted from a completed procedure, not evaluation, listing, or hospital survival.",
+      "Annual regional incidence and ICU entry fraction remain unspecified. Annual weights are emitted only when both inputs are supplied; no all-indication liver transplant volume is inferred."
+    ]
+  },
+  "cirrhosis_integration": {
+    "version": "1.1-demo",
+    "initial_severity_range": [
+      0.2,
+      1.0
+    ],
+    "assumptions": [
+      "The existing population cirrhosis module is mixed-cause. Its episodes use the cirrhosis profile unless a caller explicitly records liver_cirrhosis_etiology=alcohol. No alcohol-use disorder is inferred.",
+      "The generic cirrhosis profile initially copies the illustrative chronic profile coefficients. Entry severity is a synthetic uniform draw; admission mix, mortality, length of stay, and recurrence are not clinically calibrated.",
+      "Severe functional impairment or an organ-support indication prompts ICU care. Ward patients have daily reassessment and may recover, deteriorate, die, or require ICU/transplant evaluation.",
+      "The existing hospital cohort is not subjected to another 25% referral draw. Regional referral selection belongs upstream. The earlier 25% ICU transplant fit applies to its reference case mix and does not establish this new cohort rate.",
+      "Owned chronic medications are held on ICU escalation and reconciled at follow-up seven days after medical recovery. Transplant recipients leave the native-liver cirrhosis management loop; existing recipient follow-up continues in the shared care course.",
+      "An explicit one-hour ED workup precedes the initial shared assessment, separating ED and inpatient encounter times without inserting gaps into the daily liver-model clock."
+    ],
+    "workup_hours": 1,
+    "evaluation_odds_multiplier": 1.5
+  },
+  "cirrhosis_calibration": {
+    "version": "1.1",
+    "catchment": "Washington-Arlington-Alexandria DC metropolitan area",
+    "referral_share": 0.25,
+    "icu_transplant_target": 0.21,
+    "target_definition": "Completed liver transplantation during the index liver ICU/inpatient course divided by all index liver ICU entrants, including recipients who subsequently die.",
+    "target_source": "User accepted approximately 21% after the completed training fit produced 20.74% (2026-10-25); original ICU target was 25%. Regional referral assumption remains 25%.",
+    "cohort": {
+      "etiology_weights": {
+        "cirrhosis": 1.0
+      },
+      "initial_severity_range": [
+        0.2,
+        1.0
+      ],
+      "age_years": 50,
+      "trajectory": "stable",
+      "regional_cases_per_year": null,
+      "icu_fraction_among_referred": null
+    },
+    "simulation": {
+      "regional_cases_per_seed": 8000,
+      "fit_seeds": [
+        7101,
+        7202,
+        7303
+      ],
+      "validation_seeds": [
+        90101,
+        90202,
+        90303
+      ],
+      "observation_days": 365,
+      "fit_tolerance": 0.005,
+      "validation_tolerance": 0.025,
+      "max_fit_iterations": 12,
+      "parallel_shards_per_seed": 3
+    },
+    "assumptions": [
+      "Regional cases are patients with an index cirrhosis decompensation, not a regional general-population sample. Referral is applied once upstream of the hospital parent.",
+      "The harness conditions on diagnosis and first decompensation, then uses the production ED/ward/ICU logic and severity draw without forcing outcomes. Native-liver follow-up terminates observation before recurrence.",
+      "Generic mixed-cause cirrhosis is the current population entry profile. Age 50, renal baseline 0.9, and fixed demographic/coverage fixtures are not measured MGUH case mix; unrelated disease modules are absent.",
+      "The fitted cirrhosis evaluation multiplier applies only to native-liver ICU episodes entered through the cirrhosis bridge. The direct-ICU reference multiplier is retained.",
+      "The accepted ICU-transplant target denominator includes only index ICU entrants, not referred patients managed entirely on the ward. Completed operations count even if the recipient dies; unresolved native-liver outcomes cannot validate a fit.",
+      "Annual incidence, mortality, length of stay, recurrence, alcohol/viral/NASH proportions, and background-disease effects remain uncalibrated."
+    ],
+    "entry_path": "cirrhosis",
+    "original_icu_transplant_target": 0.25,
+    "accepted_training_result": {
+      "parameter": "cirrhosis_integration.evaluation_odds_multiplier",
+      "value": 1.5,
+      "transplants": 778,
+      "icu_entrants": 3751,
+      "rate": 0.20741135697147428,
+      "selection": "Explicit user acceptance before independent validation; no further fitting."
+    }
+  }
+}

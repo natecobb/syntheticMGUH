@@ -332,11 +332,18 @@ Drug, food, and environmental allergies and intolerances.
 ### 4.3 Clinical Notes (`notes` & `notes_llm`)
 
 #### `notes.parquet`
-Structured encounter notes parsed from Synthea's clinical note exporter and linked 1:1 to `encounters.id`.
+Structured encounter notes parsed from Synthea's clinical note exporter and linked to `encounters.id`.
+The repository's `synthea/templates/notes/note.ftl` override emits an ISO-8601 UTC encounter-start
+header. The converter matches these notes by patient and encounter start at CSV second precision,
+so distinct same-day ED and inpatient visits retain separate notes. Older date-only headers use
+the existing date-range/nearest-start heuristic. Encounters with identical start timestamps remain
+ambiguous; ties use encounter ID for deterministic selection. This does not enforce a unique
+note per encounter. The parsing-only precision flag is not exported.
+
 | Column | Type | Description |
 |---|---|---|
 | `patient` | `VARCHAR` | Foreign key → `patients.id` |
-| `date` | `TIMESTAMP WITH TIME ZONE` | Encounter note date (`>= 2010-01-01`) |
+| `date` | `TIMESTAMP WITH TIME ZONE` | Encounter start from precise headers; America/New_York midnight for legacy date-only headers (`>= 2010-01-01`) |
 | `note_text` | `VARCHAR` | Structured Synthea clinical note text |
 | `encounter` | `VARCHAR` | Foreign key → `encounters.id` |
 

@@ -26,7 +26,7 @@ All generated Parquet files are written to `./output/seed_<seed>/parquet/` (syml
 |---|---|---|
 | **Demographics & Directory** | `patients`, `organizations`, `providers`, `payers`, `payer_transitions` | `patients.id`, `organizations.id` (`npi`), `providers.id` (`npi`), `payers.id` |
 | **Clinical Encounters & Care** | `encounters`, `conditions`, `medications`, `procedures`, `observations`, `immunizations`, `allergies`, `careplans`, `devices`, `imaging_studies`, `supplies`, `symptoms` | Linked via `patient` → `patients.id` and `encounter` → `encounters.id` |
-| **Clinical Notes** | `notes`, `notes_llm` | 1:1 with `encounters` via `(patient, encounter)` |
+| **Clinical Notes** | `notes`, `notes_llm` | Linked to `encounters` via `(patient, encounter)` |
 | **Financial / Claims** | `claims`, `claims_transactions` | Linked via `patientid`, `appointmentid` → `encounters.id`, and `claimid` → `claims.id` |
 | **Vocabulary & Crosswalk** | `codes` | `(vocab, code)` — includes `description`, `omop_concept_id`, `omop_domain_id`, `icd10cm_code`, `icd10cm_description`, `hcpcs_code` |
 
@@ -174,6 +174,12 @@ Loaded at runtime via `-d ./synthea/modules` without modifying the stock Synthea
   - **Neurology**: `migraine.json`, `multiple_sclerosis.json`, `parkinsons_disease.json`
   - **Gastroenterology & Hepatology**: `cirrhosis.json`, `gerd.json`, `hepatitis_b.json`, `hepatitis_c.json`, `inflammatory_bowel_disease.json`
   - **Ophthalmology, Dermatology, Oncology & Infectious Disease**: `glaucoma.json`, `psoriasis.json`, `prostate_cancer.json`, `pneumonia.json`
+
+The existing [cirrhosis pathway](docs/CIRRHOSIS_PATHWAY.md) now sends complications through emergency assessment and severity-based ward or ICU care. Medical recovery returns to chronic management; transplantation ends the native-cirrhosis loop. Its mixed-cause diagnosis is preserved unless an alcohol cause is explicitly supplied. The callable [`liver/` submodules](docs/LIVER_MODEL.md) provide correlated daily labs and configurable outcomes; the [ICU/transplant course](docs/LIVER_CARE.md) adds organ support, evaluation and graft waiting, surgery, discharge, and recipient follow-up. Fuller alcohol-specific history and population entry for toxic injury remain in issues #6/#7.
+
+The [calibration runner](docs/LIVER_CALIBRATION.md) separately models a 25% MGUH referral share for DC-metro cases and transplantation among actual ICU entrants. The original three-cause reference cohort retains its 25% transplant target. For the integrated cirrhosis pathway, the user accepted approximately 21% after a training result of 20.74%; its fitted evaluation parameter is separate from the reference cohort's. Entry severity, incidence, mortality, and other clinical parameters remain demonstration assumptions. Existing hospital-cohort patients are not filtered through referral a second time.
+
+Clinical notes use a repository template override at `synthea/templates/notes/note.ftl` to include encounter-start timestamps. This keeps same-day emergency and inpatient notes linked to their respective encounters. The stock JAR remains unchanged; keep `synthea` first on the runtime classpath. Older date-only notes retain the converter's date-based matching behavior.
 
 ### Key Properties (`synthea/synthea.properties`)
 - CSV-only export (`exporter.fhir.export = false`, `exporter.csv.export = true`)

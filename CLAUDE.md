@@ -44,7 +44,8 @@ syntheticMGUH/
 1. **Stock Untouched Synthea JAR (`./synthea/bin/`)**:
    - `0_setup_synthea.sh` installs an unmodified `synthea-with-dependencies.jar` and unpacks `physiology/*` into `synthea/bin/resources/`.
    - Never mutate the JAR binary directly. All module additions and overrides (`covid19.json`, `COVID-19 Immunization Module.json`, and the 15 specialty modules) live in `synthea/modules/` and are loaded at runtime via `-d ./synthea/modules`.
-   - Always include `synthea` first on the Java classpath (`-cp "synthea:synthea/bin/resources:synthea/bin/synthea-with-dependencies.jar"`) so `synthea/providers/syntheticMGUH/*.csv` resolves via `Utilities.readResource()`.
+   - Always include `synthea` first on the Java classpath (`-cp "synthea:synthea/bin/resources:synthea/bin/synthea-with-dependencies.jar"`) so `synthea/providers/syntheticMGUH/*.csv` resolves via `Utilities.readResource()` and `synthea/templates/notes/note.ftl` supplies precise encounter-start headers for note linkage. The template otherwise preserves the stock note body; legacy date-only exports remain readable.
+   - `synthea/modules/cirrhosis.json` calls the shared liver modules for decompensation. Regenerate `synthea/modules/liver/*.json` with `uv run python scripts/build_liver_modules.py` after editing its compiler/config; see `docs/CIRRHOSIS_PATHWAY.md` for ownership and calibration limits.
 
 2. **Code Normalization & Athena Crosswalk (`3_convert_to_parquet.py`)**:
    - All text description columns are dropped from clinical and claims tables by default (unless `--keep_descriptions` is passed) and normalized into `codes.parquet` (`PRIMARY KEY (vocab, code)`).
