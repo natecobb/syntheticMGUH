@@ -1,0 +1,113 @@
+{
+  "scope": "Baseline integrated cirrhosis scenario before mortality, length-of-stay and incidence calibration; not observed MGUH statistics.",
+  "model_version": "1.4-demo",
+  "model_sha256": "dcdf0a5359305fb54040bea1027e33e1ea590f1c288f83207522d878eace80d4",
+  "episodes_sha256": "d4da5fbeb04e324296772580df6d2b971c143d98081d86a8d6879a4f8b637159",
+  "regional_simulation_cases": 24000,
+  "referral": {
+    "numerator": 5963,
+    "denominator": 24000,
+    "rate": 0.24845833333333334,
+    "wilson_95": [
+      0.24303191948931552,
+      0.25396525820354227
+    ]
+  },
+  "icu_among_referred": {
+    "numerator": 3791,
+    "denominator": 5963,
+    "rate": 0.6357538151936944,
+    "wilson_95": [
+      0.6234560429142592,
+      0.6478767905744965
+    ]
+  },
+  "icu_transplant": {
+    "numerator": 809,
+    "denominator": 3791,
+    "rate": 0.21340015826958586,
+    "wilson_95": [
+      0.20065161450640354,
+      0.226728943132151
+    ]
+  },
+  "mortality_among_icu_entrants": {
+    "numerator": 2691,
+    "denominator": 3791,
+    "rate": 0.7098390925877077
+  },
+  "mortality_among_recipients": {
+    "numerator": 191,
+    "denominator": 809,
+    "rate": 0.2360939431396786
+  },
+  "mortality_ward_only": {
+    "numerator": 169,
+    "denominator": 2172,
+    "rate": 0.07780847145488029
+  },
+  "icu_stay_days": {
+    "n": 3791,
+    "mean": 20.807768398839357,
+    "median": 17.0,
+    "q1": 8.0,
+    "q3": 28.25,
+    "min": 1.0,
+    "max": 143.0
+  },
+  "icu_to_transplant_days": {
+    "n": 809,
+    "mean": 13.495673671199011,
+    "median": 12.0,
+    "q1": 8.0,
+    "q3": 17.0,
+    "min": 5.0,
+    "max": 60.0
+  },
+  "mutually_exclusive_icu_outcomes": {
+    "transplanted_alive_at_last_observation": 618,
+    "transplanted_then_died": 191,
+    "death_without_transplant": 2500,
+    "recovered_without_transplant": 482,
+    "unresolved_without_transplant": 0
+  },
+  "support": {
+    "ventilation": {
+      "numerator": 3473,
+      "denominator": 3791,
+      "rate": 0.9161171194935374,
+      "wilson_95": [
+        0.9068659421227533,
+        0.9245258391245365
+      ]
+    },
+    "rrt": {
+      "numerator": 2111,
+      "denominator": 3791,
+      "rate": 0.5568451595884991,
+      "wilson_95": [
+        0.5409824478400691,
+        0.572592784400052
+      ]
+    },
+    "vasopressors": {
+      "numerator": 1689,
+      "denominator": 3791,
+      "rate": 0.44552888419941966,
+      "wilson_95": [
+        0.42977040407588735,
+        0.46139764484483187
+      ]
+    }
+  },
+  "unresolved_courses": 0,
+  "total_hospital_stay_days": null,
+  "regional_incidence_per_year": null,
+  "limitations": [
+    "Regional cases are a simulation sample, not a population denominator or annual incident count.",
+    "Mortality includes deaths after transplantation; it is not mortality restricted to the pretransplant phase.",
+    "Support use is ever during the course, not day-one prevalence.",
+    "Total hospital length of stay was not separately recorded.",
+    "Reference cohort age is 50 with fixed demographic and renal-baseline fixtures; unrelated disease modules are absent."
+  ]
+}

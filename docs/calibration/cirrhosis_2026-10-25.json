@@ -1,0 +1,723 @@
+{
+  "status": "scenario_target_validated",
+  "scope": "User-accepted approximately 21% transplantation among index cirrhosis ICU entrants, plus 25% regional referral. Conditions on a first decompensation; incidence, background disease, mortality and recurrence are not calibrated.",
+  "model_sha256": "dcdf0a5359305fb54040bea1027e33e1ea590f1c288f83207522d878eace80d4",
+  "parent_sha256": "a86e08da6ab41eaafa98b8b13919e7db3aa8b857ef8ea2cc6e11f5038f26c9bd",
+  "engine_sha256": "6f27c41afa97b8ad482eb947b4b00ec4987b46b8b2b1f59bafa255b015fac8c7",
+  "scenario": {
+    "version": "1.1",
+    "catchment": "Washington-Arlington-Alexandria DC metropolitan area",
+    "referral_share": 0.25,
+    "icu_transplant_target": 0.21,
+    "target_definition": "Completed liver transplantation during the index liver ICU/inpatient course divided by all index liver ICU entrants, including recipients who subsequently die.",
+    "target_source": "User accepted approximately 21% after the completed training fit produced 20.74% (2026-10-25); original ICU target was 25%. Regional referral assumption remains 25%.",
+    "cohort": {
+      "etiology_weights": {
+        "cirrhosis": 1.0
+      },
+      "initial_severity_range": [
+        0.2,
+        1.0
+      ],
+      "age_years": 50,
+      "trajectory": "stable",
+      "regional_cases_per_year": null,
+      "icu_fraction_among_referred": null
+    },
+    "simulation": {
+      "regional_cases_per_seed": 8000,
+      "fit_seeds": [
+        7101,
+        7202,
+        7303
+      ],
+      "validation_seeds": [
+        90101,
+        90202,
+        90303
+      ],
+      "observation_days": 365,
+      "fit_tolerance": 0.005,
+      "validation_tolerance": 0.025,
+      "max_fit_iterations": 12,
+      "parallel_shards_per_seed": 3
+    },
+    "assumptions": [
+      "Regional cases are patients with an index cirrhosis decompensation, not a regional general-population sample. Referral is applied once upstream of the hospital parent.",
+      "The harness conditions on diagnosis and first decompensation, then uses the production ED/ward/ICU logic and severity draw without forcing outcomes. Native-liver follow-up terminates observation before recurrence.",
+      "Generic mixed-cause cirrhosis is the current population entry profile. Age 50, renal baseline 0.9, and fixed demographic/coverage fixtures are not measured MGUH case mix; unrelated disease modules are absent.",
+      "The fitted cirrhosis evaluation multiplier applies only to native-liver ICU episodes entered through the cirrhosis bridge. The direct-ICU reference multiplier is retained.",
+      "The accepted ICU-transplant target denominator includes only index ICU entrants, not referred patients managed entirely on the ward. Completed operations count even if the recipient dies; unresolved native-liver outcomes cannot validate a fit.",
+      "Annual incidence, mortality, length of stay, recurrence, alcohol/viral/NASH proportions, and background-disease effects remain uncalibrated."
+    ],
+    "entry_path": "cirrhosis",
+    "original_icu_transplant_target": 0.25,
+    "accepted_training_result": {
+      "parameter": "cirrhosis_integration.evaluation_odds_multiplier",
+      "value": 1.5,
+      "transplants": 778,
+      "icu_entrants": 3751,
+      "rate": 0.20741135697147428,
+      "selection": "Explicit user acceptance before independent validation; no further fitting."
+    }
+  },
+  "parameter": "cirrhosis_integration.evaluation_odds_multiplier",
+  "evaluation_odds_multiplier": 1.5,
+  "fit_history": [
+    {
+      "iteration": 0,
+      "evaluation_odds_multiplier": 0.75,
+      "summary": {
+        "regional_cases": 24000,
+        "entry_path": "cirrhosis",
+        "referral": {
+          "numerator": 5932,
+          "denominator": 24000,
+          "rate": 0.24716666666666667,
+          "wilson_95": [
+            0.24175000234637511,
+            0.2526642554373355
+          ]
+        },
+        "icu_transplant": {
+          "numerator": 611,
+          "denominator": 3751,
+          "rate": 0.16288989602772594,
+          "wilson_95": [
+            0.15141863998721986,
+            0.17505092530987307
+          ]
+        },
+        "outcomes": {
+          "transplanted_alive_at_last_observation": 453,
+          "transplanted_then_died": 158,
+          "death_without_transplant": 2661,
+          "recovered_without_transplant": 479,
+          "unresolved_without_transplant": 0
+        },
+        "censored_courses": 0,
+        "censored_after_transplant": 0,
+        "by_etiology": {
+          "alcohol_cirrhosis": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null,
+            "wilson_95": null
+          },
+          "acetaminophen": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null,
+            "wilson_95": null
+          },
+          "non_acetaminophen": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null,
+            "wilson_95": null
+          },
+          "cirrhosis": {
+            "numerator": 611,
+            "denominator": 3751,
+            "rate": 0.16288989602772594,
+            "wilson_95": [
+              0.15141863998721986,
+              0.17505092530987307
+            ]
+          }
+        },
+        "by_seed": {
+          "7101": {
+            "numerator": 207,
+            "denominator": 1211,
+            "rate": 0.17093311312964493,
+            "wilson_95": [
+              0.15077930267068948,
+              0.19316801307725448
+            ]
+          },
+          "7202": {
+            "numerator": 196,
+            "denominator": 1269,
+            "rate": 0.15445232466509062,
+            "wilson_95": [
+              0.13561477332263044,
+              0.17537561442561822
+            ]
+          },
+          "7303": {
+            "numerator": 208,
+            "denominator": 1271,
+            "rate": 0.16365066876475218,
+            "wilson_95": [
+              0.14433064816532976,
+              0.1849977211905532
+            ]
+          }
+        },
+        "support": {
+          "ventilation": {
+            "numerator": 3426,
+            "denominator": 3751,
+            "rate": 0.9133564382831245,
+            "wilson_95": [
+              0.9039257261682796,
+              0.9219413667592471
+            ]
+          },
+          "rrt": {
+            "numerator": 2090,
+            "denominator": 3751,
+            "rate": 0.5571847507331378,
+            "wilson_95": [
+              0.5412383603465521,
+              0.5730141333219124
+            ]
+          },
+          "vasopressors": {
+            "numerator": 1656,
+            "denominator": 3751,
+            "rate": 0.44148227139429486,
+            "wilson_95": [
+              0.4256592138538343,
+              0.45742506418706086
+            ]
+          }
+        },
+        "icu_among_referred": {
+          "numerator": 3751,
+          "denominator": 5932,
+          "rate": 0.6323331085637222,
+          "wilson_95": [
+            0.6199810496496926,
+            0.6445138852119808
+          ]
+        },
+        "non_icu_outcomes": {
+          "recovered": 2001,
+          "died": 180,
+          "unresolved": 0
+        },
+        "icu_entry_routes": {
+          "direct": {
+            "numerator": 393,
+            "denominator": 2285,
+            "rate": 0.17199124726477025,
+            "wilson_95": [
+              0.1570719105665931,
+              0.18801160571489423
+            ]
+          },
+          "from_ward": {
+            "numerator": 218,
+            "denominator": 1466,
+            "rate": 0.14870395634379263,
+            "wilson_95": [
+              0.13140968441214035,
+              0.16783446616012243
+            ]
+          }
+        },
+        "mean_completed_icu_days": 20.626699546787524,
+        "mean_days_to_transplant": 16.32569558101473,
+        "annualization": null
+      }
+    },
+    {
+      "iteration": 1,
+      "evaluation_odds_multiplier": 1.5,
+      "summary": {
+        "regional_cases": 24000,
+        "entry_path": "cirrhosis",
+        "referral": {
+          "numerator": 5932,
+          "denominator": 24000,
+          "rate": 0.24716666666666667,
+          "wilson_95": [
+            0.24175000234637511,
+            0.2526642554373355
+          ]
+        },
+        "icu_transplant": {
+          "numerator": 778,
+          "denominator": 3751,
+          "rate": 0.20741135697147428,
+          "wilson_95": [
+            0.19473865936975637,
+            0.2206827308347193
+          ]
+        },
+        "outcomes": {
+          "transplanted_alive_at_last_observation": 592,
+          "transplanted_then_died": 186,
+          "death_without_transplant": 2495,
+          "recovered_without_transplant": 478,
+          "unresolved_without_transplant": 0
+        },
+        "censored_courses": 0,
+        "censored_after_transplant": 0,
+        "by_etiology": {
+          "alcohol_cirrhosis": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null,
+            "wilson_95": null
+          },
+          "acetaminophen": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null,
+            "wilson_95": null
+          },
+          "non_acetaminophen": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null,
+            "wilson_95": null
+          },
+          "cirrhosis": {
+            "numerator": 778,
+            "denominator": 3751,
+            "rate": 0.20741135697147428,
+            "wilson_95": [
+              0.19473865936975637,
+              0.2206827308347193
+            ]
+          }
+        },
+        "by_seed": {
+          "7101": {
+            "numerator": 258,
+            "denominator": 1211,
+            "rate": 0.21304706853839803,
+            "wilson_95": [
+              0.1909115294039826,
+              0.2369973594853788
+            ]
+          },
+          "7202": {
+            "numerator": 251,
+            "denominator": 1269,
+            "rate": 0.19779353821907014,
+            "wilson_95": [
+              0.1768034428639855,
+              0.22060776284058317
+            ]
+          },
+          "7303": {
+            "numerator": 269,
+            "denominator": 1271,
+            "rate": 0.2116443745082612,
+            "wilson_95": [
+              0.19007392108661875,
+              0.2349526224664364
+            ]
+          }
+        },
+        "support": {
+          "ventilation": {
+            "numerator": 3424,
+            "denominator": 3751,
+            "rate": 0.9128232471340976,
+            "wilson_95": [
+              0.9033681249916758,
+              0.9214336766195947
+            ]
+          },
+          "rrt": {
+            "numerator": 2104,
+            "denominator": 3751,
+            "rate": 0.5609170887763263,
+            "wilson_95": [
+              0.544981063846506,
+              0.5767284690357513
+            ]
+          },
+          "vasopressors": {
+            "numerator": 1656,
+            "denominator": 3751,
+            "rate": 0.44148227139429486,
+            "wilson_95": [
+              0.4256592138538343,
+              0.45742506418706086
+            ]
+          }
+        },
+        "icu_among_referred": {
+          "numerator": 3751,
+          "denominator": 5932,
+          "rate": 0.6323331085637222,
+          "wilson_95": [
+            0.6199810496496926,
+            0.6445138852119808
+          ]
+        },
+        "non_icu_outcomes": {
+          "recovered": 2001,
+          "died": 180,
+          "unresolved": 0
+        },
+        "icu_entry_routes": {
+          "direct": {
+            "numerator": 513,
+            "denominator": 2285,
+            "rate": 0.22450765864332603,
+            "wilson_95": [
+              0.20786974257132107,
+              0.24207031546629904
+            ]
+          },
+          "from_ward": {
+            "numerator": 265,
+            "denominator": 1466,
+            "rate": 0.18076398362892224,
+            "wilson_95": [
+              0.16190750588675518,
+              0.20128912026434964
+            ]
+          }
+        },
+        "mean_completed_icu_days": 20.278725673153826,
+        "mean_days_to_transplant": 13.289203084832906,
+        "annualization": null
+      }
+    }
+  ],
+  "validation": {
+    "regional_cases": 24000,
+    "entry_path": "cirrhosis",
+    "referral": {
+      "numerator": 5963,
+      "denominator": 24000,
+      "rate": 0.24845833333333334,
+      "wilson_95": [
+        0.24303191948931552,
+        0.25396525820354227
+      ]
+    },
+    "icu_transplant": {
+      "numerator": 809,
+      "denominator": 3791,
+      "rate": 0.21340015826958586,
+      "wilson_95": [
+        0.20065161450640354,
+        0.226728943132151
+      ]
+    },
+    "outcomes": {
+      "transplanted_alive_at_last_observation": 618,
+      "transplanted_then_died": 191,
+      "death_without_transplant": 2500,
+      "recovered_without_transplant": 482,
+      "unresolved_without_transplant": 0
+    },
+    "censored_courses": 0,
+    "censored_after_transplant": 0,
+    "by_etiology": {
+      "alcohol_cirrhosis": {
+        "numerator": 0,
+        "denominator": 0,
+        "rate": null,
+        "wilson_95": null
+      },
+      "acetaminophen": {
+        "numerator": 0,
+        "denominator": 0,
+        "rate": null,
+        "wilson_95": null
+      },
+      "non_acetaminophen": {
+        "numerator": 0,
+        "denominator": 0,
+        "rate": null,
+        "wilson_95": null
+      },
+      "cirrhosis": {
+        "numerator": 809,
+        "denominator": 3791,
+        "rate": 0.21340015826958586,
+        "wilson_95": [
+          0.20065161450640354,
+          0.226728943132151
+        ]
+      }
+    },
+    "by_seed": {
+      "90101": {
+        "numerator": 245,
+        "denominator": 1266,
+        "rate": 0.19352290679304898,
+        "wilson_95": [
+          0.1727014843366194,
+          0.21619860660806148
+        ]
+      },
+      "90202": {
+        "numerator": 259,
+        "denominator": 1232,
+        "rate": 0.21022727272727273,
+        "wilson_95": [
+          0.18839255334362714,
+          0.23386343677234056
+        ]
+      },
+      "90303": {
+        "numerator": 305,
+        "denominator": 1293,
+        "rate": 0.23588553750966745,
+        "wilson_95": [
+          0.21354812889078403,
+          0.2597876475416735
+        ]
+      }
+    },
+    "support": {
+      "ventilation": {
+        "numerator": 3473,
+        "denominator": 3791,
+        "rate": 0.9161171194935374,
+        "wilson_95": [
+          0.9068659421227533,
+          0.9245258391245365
+        ]
+      },
+      "rrt": {
+        "numerator": 2111,
+        "denominator": 3791,
+        "rate": 0.5568451595884991,
+        "wilson_95": [
+          0.5409824478400691,
+          0.572592784400052
+        ]
+      },
+      "vasopressors": {
+        "numerator": 1689,
+        "denominator": 3791,
+        "rate": 0.44552888419941966,
+        "wilson_95": [
+          0.42977040407588735,
+          0.46139764484483187
+        ]
+      }
+    },
+    "icu_among_referred": {
+      "numerator": 3791,
+      "denominator": 5963,
+      "rate": 0.6357538151936944,
+      "wilson_95": [
+        0.6234560429142592,
+        0.6478767905744965
+      ]
+    },
+    "non_icu_outcomes": {
+      "recovered": 2003,
+      "died": 169,
+      "unresolved": 0
+    },
+    "icu_entry_routes": {
+      "direct": {
+        "numerator": 525,
+        "denominator": 2332,
+        "rate": 0.2251286449399657,
+        "wilson_95": [
+          0.2086368753829937,
+          0.24252450581483448
+        ]
+      },
+      "from_ward": {
+        "numerator": 284,
+        "denominator": 1459,
+        "rate": 0.19465387251542152,
+        "wilson_95": [
+          0.1751503374793644,
+          0.2157611009219633
+        ]
+      }
+    },
+    "mean_completed_icu_days": 20.807768398839357,
+    "mean_days_to_transplant": 13.495673671199011,
+    "annualization": null
+  },
+  "checks": {
+    "minimum_1000_icu_entrants": true,
+    "transplant_target_within_tolerance": true,
+    "referral_target_within_tolerance": true,
+    "no_unresolved_transplant_outcomes": true,
+    "no_unresolved_non_icu_courses": true,
+    "accepted_training_target_within_tolerance": true
+  },
+  "applied": true,
+  "training": {
+    "regional_cases": 24000,
+    "entry_path": "cirrhosis",
+    "referral": {
+      "numerator": 5932,
+      "denominator": 24000,
+      "rate": 0.24716666666666667,
+      "wilson_95": [
+        0.24175000234637511,
+        0.2526642554373355
+      ]
+    },
+    "icu_transplant": {
+      "numerator": 778,
+      "denominator": 3751,
+      "rate": 0.20741135697147428,
+      "wilson_95": [
+        0.19473865936975637,
+        0.2206827308347193
+      ]
+    },
+    "outcomes": {
+      "transplanted_alive_at_last_observation": 592,
+      "transplanted_then_died": 186,
+      "death_without_transplant": 2495,
+      "recovered_without_transplant": 478,
+      "unresolved_without_transplant": 0
+    },
+    "censored_courses": 0,
+    "censored_after_transplant": 0,
+    "by_etiology": {
+      "alcohol_cirrhosis": {
+        "numerator": 0,
+        "denominator": 0,
+        "rate": null,
+        "wilson_95": null
+      },
+      "acetaminophen": {
+        "numerator": 0,
+        "denominator": 0,
+        "rate": null,
+        "wilson_95": null
+      },
+      "non_acetaminophen": {
+        "numerator": 0,
+        "denominator": 0,
+        "rate": null,
+        "wilson_95": null
+      },
+      "cirrhosis": {
+        "numerator": 778,
+        "denominator": 3751,
+        "rate": 0.20741135697147428,
+        "wilson_95": [
+          0.19473865936975637,
+          0.2206827308347193
+        ]
+      }
+    },
+    "by_seed": {
+      "7101": {
+        "numerator": 258,
+        "denominator": 1211,
+        "rate": 0.21304706853839803,
+        "wilson_95": [
+          0.1909115294039826,
+          0.2369973594853788
+        ]
+      },
+      "7202": {
+        "numerator": 251,
+        "denominator": 1269,
+        "rate": 0.19779353821907014,
+        "wilson_95": [
+          0.1768034428639855,
+          0.22060776284058317
+        ]
+      },
+      "7303": {
+        "numerator": 269,
+        "denominator": 1271,
+        "rate": 0.2116443745082612,
+        "wilson_95": [
+          0.19007392108661875,
+          0.2349526224664364
+        ]
+      }
+    },
+    "support": {
+      "ventilation": {
+        "numerator": 3424,
+        "denominator": 3751,
+        "rate": 0.9128232471340976,
+        "wilson_95": [
+          0.9033681249916758,
+          0.9214336766195947
+        ]
+      },
+      "rrt": {
+        "numerator": 2104,
+        "denominator": 3751,
+        "rate": 0.5609170887763263,
+        "wilson_95": [
+          0.544981063846506,
+          0.5767284690357513
+        ]
+      },
+      "vasopressors": {
+        "numerator": 1656,
+        "denominator": 3751,
+        "rate": 0.44148227139429486,
+        "wilson_95": [
+          0.4256592138538343,
+          0.45742506418706086
+        ]
+      }
+    },
+    "icu_among_referred": {
+      "numerator": 3751,
+      "denominator": 5932,
+      "rate": 0.6323331085637222,
+      "wilson_95": [
+        0.6199810496496926,
+        0.6445138852119808
+      ]
+    },
+    "non_icu_outcomes": {
+      "recovered": 2001,
+      "died": 180,
+      "unresolved": 0
+    },
+    "icu_entry_routes": {
+      "direct": {
+        "numerator": 513,
+        "denominator": 2285,
+        "rate": 0.22450765864332603,
+        "wilson_95": [
+          0.20786974257132107,
+          0.24207031546629904
+        ]
+      },
+      "from_ward": {
+        "numerator": 265,
+        "denominator": 1466,
+        "rate": 0.18076398362892224,
+        "wilson_95": [
+          0.16190750588675518,
+          0.20128912026434964
+        ]
+      }
+    },
+    "mean_completed_icu_days": 20.278725673153826,
+    "mean_days_to_transplant": 13.289203084832906,
+    "annualization": null
+  },
+  "selection": {
+    "parameter": "cirrhosis_integration.evaluation_odds_multiplier",
+    "value": 1.5,
+    "transplants": 778,
+    "icu_entrants": 3751,
+    "rate": 0.20741135697147428,
+    "selection": "Explicit user acceptance before independent validation; no further fitting."
+  },
+  "training_audit": {
+    "unique_cases_per_training_pass": 24000,
+    "same_case_ids": true,
+    "unchanged_referral_initial_severity_and_icu_entry": true,
+    "unchanged_non_icu_records": true,
+    "baseline_episodes_sha256": "6def6d48a4f4c11c3cbb3d66caf094d8a683750791ee6e76e9ad63688f51bc01",
+    "accepted_episodes_sha256": "c5e4e2a9721a8e966bab7da4c0c5d00e12f1b26135bd9605d7ff77078b643161"
+  },
+  "validation_episodes_sha256": "d4da5fbeb04e324296772580df6d2b971c143d98081d86a8d6879a4f8b637159",
+  "validation_unique_cases": 24000
+}

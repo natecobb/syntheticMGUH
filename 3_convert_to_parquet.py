@@ -262,11 +262,14 @@ def main(
                     patient VARCHAR,
                     date TIMESTAMPTZ,
                     note_text VARCHAR,
-                    encounter VARCHAR
+                    encounter VARCHAR,
+                    has_start_time BOOLEAN
                 )
             """)
 
             regex_id = r"(^.*_)(.*?)\.txt"
+            # The repository note.ftl emits ISO-8601 encounter-start headers. Retain the
+            # legacy date-only reader for older exports; only those need the date heuristic.
             regex_notes = r"([1-2][0-9]{3}-[0-9]{2}-[0-9]{2}.*?)\n\n([\s\S]*?)(?=\n\n\n\n|\Z)"
 
             notes_files = sorted(f for f in notes_path.iterdir() if f.suffix == '.txt')
@@ -279,11 +282,14 @@ def main(
                     return
                 notes_df = pd.DataFrame(rows, columns=["patient", "note_date", "note_text"])
                 con.execute("""
-                    INSERT INTO notes (patient, date, note_text, encounter)
+                    INSERT INTO notes (patient, date, note_text, encounter, has_start_time)
                     SELECT patient,
-                           timezone('America/New_York', TRY_CAST(note_date AS TIMESTAMP)),
+                           CASE WHEN contains(note_date, 'T')
+                                THEN TRY_CAST(note_date AS TIMESTAMPTZ)
+                                ELSE timezone('America/New_York', TRY_CAST(note_date AS TIMESTAMP)) END,
                            note_text,
-                           NULL
+                           NULL,
+                           contains(note_date, 'T')
                     FROM notes_df
                 """)
 
@@ -327,17 +333,22 @@ def main(
                     FROM (SELECT rowid AS note_id, * FROM notes) n
                     JOIN encounters e
                       ON e.patient = n.patient
-                     AND CAST(n.date AS DATE) BETWEEN CAST(e.start AS DATE)
-                         AND COALESCE(CAST(e.stop AS DATE), CAST(n.date AS DATE))
+                     AND CASE WHEN n.has_start_time
+                              THEN date_trunc('second', n.date) = date_trunc('second', e.start)
+                              ELSE CAST(n.date AS DATE) BETWEEN CAST(e.start AS DATE)
+                                  AND COALESCE(CAST(e.stop AS DATE), CAST(n.date AS DATE)) END
                     QUALIFY ROW_NUMBER() OVER (
                         PARTITION BY n.note_id
-                        ORDER BY ABS(EPOCH(n.date) - EPOCH(e.start)) ASC
+                        ORDER BY ABS(EPOCH(n.date) - EPOCH(e.start)) ASC, e.id ASC
                     ) = 1
                 """)
                 matched_count = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
                 unmatched = raw_note_count - matched_count
                 if unmatched > 0:
                     print(f"  Removed {unmatched:,} notes without matching encounter")
+            else:
+                # The parsing-only precision flag is never part of the public notes schema.
+                con.execute("ALTER TABLE notes DROP COLUMN has_start_time")
 
             note_count = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
             print(f"  ✓ Loaded {note_count:,} clinical notes linked to encounters")

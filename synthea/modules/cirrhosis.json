@@ -1,8 +1,10 @@
 {
   "name": "Cirrhosis of Liver",
   "remarks": [
-    "Cirrhosis from chronic liver injury (alcohol/viral/NASH). Onset mid-to-late adulthood.",
-    "Complications: ascites, hepatic encephalopathy, variceal bleeding, HCC. HCC surveillance with AFP."
+    "Mixed-cause cirrhosis with existing synthetic onset and chronic management probabilities.",
+    "Complications now call liver/cirrhosis_decompensation for correlated assessment, non-ICU recovery, and severity-based escalation to ICU/transplant care.",
+    "Cause remains unspecified unless explicitly supplied as liver_cirrhosis_etiology=alcohol. No alcohol-use disorder is inferred.",
+    "Native-liver management resumes after medical recovery and stops after transplantation. Regional referral selection is upstream; the existing hospital cohort is not filtered a second time."
   ],
   "states": {
     "Onset_Age_40_55": {
@@ -55,7 +57,48 @@
     },
     "Onset_Entry": {
       "type": "Simple",
-      "direct_transition": "Diagnosis_Encounter"
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "Or",
+            "conditions": [
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_transplant_status",
+                "operator": "==",
+                "value": "recipient"
+              },
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "737297006",
+                    "display": "Transplanted liver present"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Terminal"
+        },
+        {
+          "condition": {
+            "condition_type": "Active Condition",
+            "codes": [
+              {
+                "system": "SNOMED-CT",
+                "code": "19943007",
+                "display": "Cirrhosis of liver"
+              }
+            ]
+          },
+          "transition": "Terminal"
+        },
+        {
+          "transition": "Diagnosis_Encounter"
+        }
+      ]
     },
     "Diagnosis_Encounter": {
       "type": "Encounter",
@@ -215,63 +258,88 @@
       "direct_transition": "Care_Plan"
     },
     "Care_Plan": {
-      "type": "CarePlanStart",
-      "assign_to_attribute": "cirrhosis_careplan",
-      "reason": "cirrhosis",
-      "codes": [
+      "type": "Simple",
+      "conditional_transition": [
         {
-          "system": "SNOMED-CT",
-          "code": "183063000",
-          "display": "Low salt diet education"
-        }
-      ],
-      "activities": [
+          "condition": {
+            "condition_type": "Active CarePlan",
+            "codes": [
+              {
+                "system": "SNOMED-CT",
+                "code": "183063000",
+                "display": "Low salt diet education"
+              }
+            ]
+          },
+          "transition": "Init_Med_0"
+        },
         {
-          "system": "SNOMED-CT",
-          "code": "226234005",
-          "display": "Healthy diet (finding)"
+          "transition": "Care_Plan_Start"
         }
-      ],
-      "direct_transition": "Init_Med_0"
+      ]
     },
     "Init_Med_0": {
-      "type": "MedicationOrder",
-      "codes": [
+      "type": "Simple",
+      "conditional_transition": [
         {
-          "system": "RxNorm",
-          "code": "313096",
-          "display": "spironolactone 25 MG Oral Tablet"
+          "condition": {
+            "condition_type": "Active Medication",
+            "codes": [
+              {
+                "system": "RxNorm",
+                "code": "313096",
+                "display": "spironolactone 25 MG Oral Tablet"
+              }
+            ]
+          },
+          "transition": "Init_Med_1"
+        },
+        {
+          "transition": "Init_Med_0_Order"
         }
-      ],
-      "reason": "cirrhosis",
-      "assign_to_attribute": "cirrhosis_meds",
-      "direct_transition": "Init_Med_1"
+      ]
     },
     "Init_Med_1": {
-      "type": "MedicationOrder",
-      "codes": [
+      "type": "Simple",
+      "conditional_transition": [
         {
-          "system": "RxNorm",
-          "code": "313988",
-          "display": "Furosemide 40 MG Oral Tablet"
+          "condition": {
+            "condition_type": "Active Medication",
+            "codes": [
+              {
+                "system": "RxNorm",
+                "code": "313988",
+                "display": "Furosemide 40 MG Oral Tablet"
+              }
+            ]
+          },
+          "transition": "Init_Med_2"
+        },
+        {
+          "transition": "Init_Med_1_Order"
         }
-      ],
-      "reason": "cirrhosis",
-      "assign_to_attribute": "cirrhosis_meds",
-      "direct_transition": "Init_Med_2"
+      ]
     },
     "Init_Med_2": {
-      "type": "MedicationOrder",
-      "codes": [
+      "type": "Simple",
+      "conditional_transition": [
         {
-          "system": "RxNorm",
-          "code": "856519",
-          "display": "propranolol hydrochloride 40 MG Oral Tablet"
+          "condition": {
+            "condition_type": "Active Medication",
+            "codes": [
+              {
+                "system": "RxNorm",
+                "code": "856519",
+                "display": "propranolol hydrochloride 40 MG Oral Tablet"
+              }
+            ]
+          },
+          "transition": "End_Diagnosis_Encounter"
+        },
+        {
+          "transition": "Init_Med_2_Order"
         }
-      ],
-      "reason": "cirrhosis",
-      "assign_to_attribute": "cirrhosis_meds",
-      "direct_transition": "End_Diagnosis_Encounter"
+      ]
     },
     "End_Diagnosis_Encounter": {
       "type": "EncounterEnd",
@@ -284,6 +352,11 @@
     },
     "Manage_Delay": {
       "type": "Delay",
+      "remarks": [
+        "These synthetic branch probabilities apply once after each completed 4-10 month management delay. They are not annual mortality or complication rates.",
+        "The previously unallocated 0.20 explicitly continues management with a new delay and no clinical event. This modeling assumption preserves the existing follow-up (0.66), complication (0.10), and death-state selection (0.04) probabilities; it is not clinically calibrated.",
+        "Follow-up can wait for a wellness encounter. The disease-death branch waits 1-12 months and rechecks native cirrhosis and transplant status before recording death."
+      ],
       "range": {
         "low": 4,
         "high": 10,
@@ -301,53 +374,174 @@
         {
           "distribution": 0.04,
           "transition": "Disease_Death"
+        },
+        {
+          "distribution": 0.2,
+          "transition": "Manage_Delay"
         }
       ]
     },
     "Followup_Encounter": {
-      "type": "Encounter",
-      "wellness": true,
-      "reason": "cirrhosis",
-      "direct_transition": "Refill_Med_0"
+      "type": "Simple",
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "Or",
+            "conditions": [
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_transplant_status",
+                "operator": "==",
+                "value": "recipient"
+              },
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "737297006",
+                    "display": "Transplanted liver present"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Stop_Chronic_Care"
+        },
+        {
+          "condition": {
+            "condition_type": "Or",
+            "conditions": [
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_active",
+                "operator": "==",
+                "value": true
+              },
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_care_active",
+                "operator": "==",
+                "value": true
+              }
+            ]
+          },
+          "transition": "Wait_For_Followup_Owner"
+        },
+        {
+          "condition": {
+            "condition_type": "And",
+            "conditions": [
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "19943007",
+                    "display": "Cirrhosis of liver"
+                  }
+                ]
+              },
+              {
+                "condition_type": "Not",
+                "condition": {
+                  "condition_type": "Active Condition",
+                  "codes": [
+                    {
+                      "system": "SNOMED-CT",
+                      "code": "737297006",
+                      "display": "Transplanted liver present"
+                    }
+                  ]
+                }
+              },
+              {
+                "condition_type": "Or",
+                "conditions": [
+                  {
+                    "condition_type": "Attribute",
+                    "attribute": "liver_transplant_status",
+                    "operator": "is nil"
+                  },
+                  {
+                    "condition_type": "Attribute",
+                    "attribute": "liver_transplant_status",
+                    "operator": "!=",
+                    "value": "recipient"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Routine_Followup_Encounter"
+        },
+        {
+          "transition": "Stop_Chronic_Care"
+        }
+      ]
     },
     "Refill_Med_0": {
-      "type": "MedicationOrder",
-      "codes": [
+      "type": "Simple",
+      "conditional_transition": [
         {
-          "system": "RxNorm",
-          "code": "313096",
-          "display": "spironolactone 25 MG Oral Tablet"
+          "condition": {
+            "condition_type": "Active Medication",
+            "codes": [
+              {
+                "system": "RxNorm",
+                "code": "313096",
+                "display": "spironolactone 25 MG Oral Tablet"
+              }
+            ]
+          },
+          "transition": "Refill_Med_1"
+        },
+        {
+          "transition": "Refill_Med_0_Order"
         }
-      ],
-      "reason": "cirrhosis",
-      "assign_to_attribute": "cirrhosis_meds",
-      "direct_transition": "Refill_Med_1"
+      ]
     },
     "Refill_Med_1": {
-      "type": "MedicationOrder",
-      "codes": [
+      "type": "Simple",
+      "conditional_transition": [
         {
-          "system": "RxNorm",
-          "code": "313988",
-          "display": "Furosemide 40 MG Oral Tablet"
+          "condition": {
+            "condition_type": "Active Medication",
+            "codes": [
+              {
+                "system": "RxNorm",
+                "code": "313988",
+                "display": "Furosemide 40 MG Oral Tablet"
+              }
+            ]
+          },
+          "transition": "Refill_Med_2"
+        },
+        {
+          "transition": "Refill_Med_1_Order"
         }
-      ],
-      "reason": "cirrhosis",
-      "assign_to_attribute": "cirrhosis_meds",
-      "direct_transition": "Refill_Med_2"
+      ]
     },
     "Refill_Med_2": {
-      "type": "MedicationOrder",
-      "codes": [
+      "type": "Simple",
+      "conditional_transition": [
         {
-          "system": "RxNorm",
-          "code": "391937",
-          "display": "lactulose 667 MG/ML Oral Solution"
+          "condition": {
+            "condition_type": "Active Medication",
+            "codes": [
+              {
+                "system": "RxNorm",
+                "code": "391937",
+                "display": "lactulose 667 MG/ML Oral Solution"
+              }
+            ]
+          },
+          "transition": "End_Followup_Encounter"
+        },
+        {
+          "transition": "Refill_Med_2_Order"
         }
-      ],
-      "reason": "cirrhosis",
-      "assign_to_attribute": "cirrhosis_meds",
-      "direct_transition": "End_Followup_Encounter"
+      ]
     },
     "End_Followup_Encounter": {
       "type": "EncounterEnd",
@@ -359,30 +553,503 @@
       "direct_transition": "Manage_Delay"
     },
     "Complication_Encounter": {
-      "type": "Encounter",
-      "encounter_class": "emergency",
+      "type": "Simple",
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "Or",
+            "conditions": [
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_transplant_status",
+                "operator": "==",
+                "value": "recipient"
+              },
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "737297006",
+                    "display": "Transplanted liver present"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Stop_Chronic_Care"
+        },
+        {
+          "condition": {
+            "condition_type": "Or",
+            "conditions": [
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_active",
+                "operator": "==",
+                "value": true
+              },
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_care_active",
+                "operator": "==",
+                "value": true
+              }
+            ]
+          },
+          "transition": "Wait_For_Liver_Owner"
+        },
+        {
+          "condition": {
+            "condition_type": "And",
+            "conditions": [
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "19943007",
+                    "display": "Cirrhosis of liver"
+                  }
+                ]
+              },
+              {
+                "condition_type": "Not",
+                "condition": {
+                  "condition_type": "Active Condition",
+                  "codes": [
+                    {
+                      "system": "SNOMED-CT",
+                      "code": "737297006",
+                      "display": "Transplanted liver present"
+                    }
+                  ]
+                }
+              },
+              {
+                "condition_type": "Or",
+                "conditions": [
+                  {
+                    "condition_type": "Attribute",
+                    "attribute": "liver_transplant_status",
+                    "operator": "is nil"
+                  },
+                  {
+                    "condition_type": "Attribute",
+                    "attribute": "liver_transplant_status",
+                    "operator": "!=",
+                    "value": "recipient"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Liver_Complication"
+        },
+        {
+          "transition": "Stop_Chronic_Care"
+        }
+      ]
+    },
+    "Disease_Death": {
+      "type": "Delay",
+      "range": {
+        "low": 1,
+        "high": 12,
+        "unit": "months"
+      },
+      "direct_transition": "Disease_Death_Check"
+    },
+    "Terminal": {
+      "type": "Terminal"
+    },
+    "Init_Med_0_Order": {
+      "type": "MedicationOrder",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "313096",
+          "display": "spironolactone 25 MG Oral Tablet"
+        }
+      ],
+      "reason": "cirrhosis",
+      "assign_to_attribute": "liver_owned_chronic_spironolactone",
+      "direct_transition": "Init_Med_1",
+      "chronic": true
+    },
+    "Init_Med_1_Order": {
+      "type": "MedicationOrder",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "313988",
+          "display": "Furosemide 40 MG Oral Tablet"
+        }
+      ],
+      "reason": "cirrhosis",
+      "assign_to_attribute": "liver_owned_chronic_furosemide",
+      "direct_transition": "Init_Med_2",
+      "chronic": true
+    },
+    "Init_Med_2_Order": {
+      "type": "MedicationOrder",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "856519",
+          "display": "propranolol hydrochloride 40 MG Oral Tablet"
+        }
+      ],
+      "reason": "cirrhosis",
+      "assign_to_attribute": "liver_owned_chronic_propranolol",
+      "direct_transition": "End_Diagnosis_Encounter",
+      "chronic": true
+    },
+    "Refill_Med_0_Order": {
+      "type": "MedicationOrder",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "313096",
+          "display": "spironolactone 25 MG Oral Tablet"
+        }
+      ],
+      "reason": "cirrhosis",
+      "assign_to_attribute": "liver_owned_chronic_spironolactone",
+      "direct_transition": "Refill_Med_1",
+      "chronic": true
+    },
+    "Refill_Med_1_Order": {
+      "type": "MedicationOrder",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "313988",
+          "display": "Furosemide 40 MG Oral Tablet"
+        }
+      ],
+      "reason": "cirrhosis",
+      "assign_to_attribute": "liver_owned_chronic_furosemide",
+      "direct_transition": "Refill_Med_2",
+      "chronic": true
+    },
+    "Refill_Med_2_Order": {
+      "type": "MedicationOrder",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "391937",
+          "display": "lactulose 667 MG/ML Oral Solution"
+        }
+      ],
+      "reason": "cirrhosis",
+      "assign_to_attribute": "liver_owned_chronic_lactulose",
+      "direct_transition": "End_Followup_Encounter",
+      "chronic": true
+    },
+    "Care_Plan_Start": {
+      "type": "CarePlanStart",
+      "assign_to_attribute": "liver_owned_cirrhosis_plan",
       "reason": "cirrhosis",
       "codes": [
         {
           "system": "SNOMED-CT",
-          "code": "32485007",
-          "display": "Hospital admission (procedure)"
+          "code": "183063000",
+          "display": "Low salt diet education"
         }
       ],
-      "direct_transition": "Complication_Onset"
+      "activities": [
+        {
+          "system": "SNOMED-CT",
+          "code": "226234005",
+          "display": "Healthy diet (finding)"
+        }
+      ],
+      "direct_transition": "Init_Med_0"
     },
-    "Complication_Onset": {
-      "type": "ConditionOnset",
+    "Stop_Chronic_Care": {
+      "type": "CallSubmodule",
+      "submodule": "liver/cirrhosis_stop_chronic",
+      "direct_transition": "Terminal"
+    },
+    "Routine_Followup_Encounter": {
+      "type": "Encounter",
+      "wellness": true,
+      "reason": "cirrhosis",
+      "direct_transition": "Followup_Care_Check"
+    },
+    "Wait_For_Followup_Owner": {
+      "type": "Delay",
+      "exact": {
+        "quantity": 1,
+        "unit": "days"
+      },
+      "direct_transition": "Followup_Encounter"
+    },
+    "Followup_Care_Check": {
+      "type": "Simple",
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "And",
+            "conditions": [
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "19943007",
+                    "display": "Cirrhosis of liver"
+                  }
+                ]
+              },
+              {
+                "condition_type": "Not",
+                "condition": {
+                  "condition_type": "Active Condition",
+                  "codes": [
+                    {
+                      "system": "SNOMED-CT",
+                      "code": "737297006",
+                      "display": "Transplanted liver present"
+                    }
+                  ]
+                }
+              },
+              {
+                "condition_type": "Or",
+                "conditions": [
+                  {
+                    "condition_type": "Attribute",
+                    "attribute": "liver_transplant_status",
+                    "operator": "is nil"
+                  },
+                  {
+                    "condition_type": "Attribute",
+                    "attribute": "liver_transplant_status",
+                    "operator": "!=",
+                    "value": "recipient"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Refill_Med_0"
+        },
+        {
+          "transition": "End_Stale_Followup"
+        }
+      ]
+    },
+    "End_Stale_Followup": {
+      "type": "EncounterEnd",
+      "direct_transition": "Stop_Chronic_Care"
+    },
+    "Wait_For_Liver_Owner": {
+      "type": "Delay",
+      "exact": {
+        "quantity": 1,
+        "unit": "days"
+      },
+      "direct_transition": "Complication_Encounter"
+    },
+    "Liver_Complication": {
+      "type": "CallSubmodule",
+      "submodule": "liver/cirrhosis_decompensation",
+      "direct_transition": "After_Liver_Complication"
+    },
+    "After_Liver_Complication": {
+      "type": "Simple",
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "Attribute",
+            "attribute": "liver_error",
+            "operator": "is not nil"
+          },
+          "transition": "Stop_Chronic_Care"
+        },
+        {
+          "condition": {
+            "condition_type": "Attribute",
+            "attribute": "liver_care_outcome",
+            "operator": "==",
+            "value": "death"
+          },
+          "transition": "Terminal"
+        },
+        {
+          "condition": {
+            "condition_type": "Or",
+            "conditions": [
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_transplant_status",
+                "operator": "==",
+                "value": "recipient"
+              },
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "737297006",
+                    "display": "Transplanted liver present"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Stop_Chronic_Care"
+        },
+        {
+          "condition": {
+            "condition_type": "Attribute",
+            "attribute": "liver_care_outcome",
+            "operator": "==",
+            "value": "recovered"
+          },
+          "transition": "Recovery_Followup_Delay"
+        },
+        {
+          "transition": "Stop_Chronic_Care"
+        }
+      ]
+    },
+    "Recovery_Followup_Delay": {
+      "type": "Delay",
+      "exact": {
+        "quantity": 7,
+        "unit": "days"
+      },
+      "direct_transition": "Recovery_Followup_Check"
+    },
+    "Recovery_Followup_Check": {
+      "type": "Simple",
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "Or",
+            "conditions": [
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_transplant_status",
+                "operator": "==",
+                "value": "recipient"
+              },
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "737297006",
+                    "display": "Transplanted liver present"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Stop_Chronic_Care"
+        },
+        {
+          "condition": {
+            "condition_type": "Or",
+            "conditions": [
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_active",
+                "operator": "==",
+                "value": true
+              },
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_care_active",
+                "operator": "==",
+                "value": true
+              }
+            ]
+          },
+          "transition": "Wait_For_Recovery_Owner"
+        },
+        {
+          "condition": {
+            "condition_type": "And",
+            "conditions": [
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "19943007",
+                    "display": "Cirrhosis of liver"
+                  }
+                ]
+              },
+              {
+                "condition_type": "Not",
+                "condition": {
+                  "condition_type": "Active Condition",
+                  "codes": [
+                    {
+                      "system": "SNOMED-CT",
+                      "code": "737297006",
+                      "display": "Transplanted liver present"
+                    }
+                  ]
+                }
+              },
+              {
+                "condition_type": "Or",
+                "conditions": [
+                  {
+                    "condition_type": "Attribute",
+                    "attribute": "liver_transplant_status",
+                    "operator": "is nil"
+                  },
+                  {
+                    "condition_type": "Attribute",
+                    "attribute": "liver_transplant_status",
+                    "operator": "!=",
+                    "value": "recipient"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Recovery_Followup_Encounter"
+        },
+        {
+          "transition": "Stop_Chronic_Care"
+        }
+      ]
+    },
+    "Wait_For_Recovery_Owner": {
+      "type": "Delay",
+      "exact": {
+        "quantity": 1,
+        "unit": "days"
+      },
+      "direct_transition": "Recovery_Followup_Check"
+    },
+    "Recovery_Followup_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "ambulatory",
+      "reason": "cirrhosis",
       "codes": [
         {
           "system": "SNOMED-CT",
-          "code": "13920009",
-          "display": "Hepatic encephalopathy"
+          "code": "185347001",
+          "display": "Encounter for problem (procedure)"
         }
       ],
-      "direct_transition": "End_Complication_Encounter"
+      "direct_transition": "Resume_Chronic_Care"
     },
-    "End_Complication_Encounter": {
+    "Resume_Chronic_Care": {
+      "type": "CallSubmodule",
+      "submodule": "liver/cirrhosis_resume_chronic",
+      "direct_transition": "End_Recovery_Followup"
+    },
+    "End_Recovery_Followup": {
       "type": "EncounterEnd",
       "discharge_disposition": {
         "system": "NUBC",
@@ -391,25 +1058,129 @@
       },
       "direct_transition": "Manage_Delay"
     },
-    "Disease_Death": {
-      "type": "Death",
-      "range": {
-        "low": 1,
-        "high": 12,
-        "unit": "months"
+    "Disease_Death_Check": {
+      "type": "Simple",
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "Or",
+            "conditions": [
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_transplant_status",
+                "operator": "==",
+                "value": "recipient"
+              },
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "737297006",
+                    "display": "Transplanted liver present"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Stop_Chronic_Care"
+        },
+        {
+          "condition": {
+            "condition_type": "Or",
+            "conditions": [
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_active",
+                "operator": "==",
+                "value": true
+              },
+              {
+                "condition_type": "Attribute",
+                "attribute": "liver_care_active",
+                "operator": "==",
+                "value": true
+              }
+            ]
+          },
+          "transition": "Wait_For_Death_Owner"
+        },
+        {
+          "condition": {
+            "condition_type": "And",
+            "conditions": [
+              {
+                "condition_type": "Active Condition",
+                "codes": [
+                  {
+                    "system": "SNOMED-CT",
+                    "code": "19943007",
+                    "display": "Cirrhosis of liver"
+                  }
+                ]
+              },
+              {
+                "condition_type": "Not",
+                "condition": {
+                  "condition_type": "Active Condition",
+                  "codes": [
+                    {
+                      "system": "SNOMED-CT",
+                      "code": "737297006",
+                      "display": "Transplanted liver present"
+                    }
+                  ]
+                }
+              },
+              {
+                "condition_type": "Or",
+                "conditions": [
+                  {
+                    "condition_type": "Attribute",
+                    "attribute": "liver_transplant_status",
+                    "operator": "is nil"
+                  },
+                  {
+                    "condition_type": "Attribute",
+                    "attribute": "liver_transplant_status",
+                    "operator": "!=",
+                    "value": "recipient"
+                  }
+                ]
+              }
+            ]
+          },
+          "transition": "Prepare_Native_Liver_Death"
+        },
+        {
+          "transition": "Stop_Chronic_Care"
+        }
+      ]
+    },
+    "Wait_For_Death_Owner": {
+      "type": "Delay",
+      "exact": {
+        "quantity": 1,
+        "unit": "days"
       },
+      "direct_transition": "Disease_Death_Check"
+    },
+    "Prepare_Native_Liver_Death": {
+      "type": "CallSubmodule",
+      "submodule": "liver/cirrhosis_stop_chronic",
+      "direct_transition": "Native_Liver_Death"
+    },
+    "Native_Liver_Death": {
+      "type": "Death",
       "codes": [
         {
           "system": "SNOMED-CT",
           "code": "59927004",
-          "display": "Hepatic failure (disorder)"
+          "display": "Hepatic failure"
         }
       ],
       "direct_transition": "Terminal"
-    },
-    "Terminal": {
-      "type": "Terminal"
     }
   },
-  "gmf_version": 1
+  "gmf_version": 2
 }
