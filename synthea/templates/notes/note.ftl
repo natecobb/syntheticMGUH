@@ -39,6 +39,16 @@ Patient currently has ${ehr_insurance?replace("_", " ")}.
 - ${entry.codes[0].display?lower_case}<#if entry.note??>
   - ${entry.note} </#if>
 </#list></#if>
+<#-- Preserve exact modeled acute onset times lost by the stock condition CSV.
+     The converter extracts these markers into transfer_signals and removes them
+     from note prose. Only newly recorded encounter conditions are considered. -->
+<#if ehr_conditions?has_content><#list ehr_conditions as entry><#list entry.codes as diagnosis>
+<#if diagnosis.code == '22298006' || diagnosis.code == '57054005'>
+<!-- synthea-transfer-v1 policy=cardiac recognized_at=${entry.start?number_to_datetime?iso_utc} code=${diagnosis.code} -->
+<#elseif diagnosis.code == '197270009'>
+<!-- synthea-transfer-v1 policy=liver recognized_at=${entry.start?number_to_datetime?iso_utc} code=${diagnosis.code} -->
+</#if>
+</#list></#list></#if>
 <#if ehr_reports?has_content>The following lab reports were completed:
 <#list ehr_reports as entry>
 - ${entry.codes[0].display?lower_case}

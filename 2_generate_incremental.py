@@ -52,6 +52,21 @@ def _save_checkpoint(checkpoint_file: Path, state: dict):
     tmp_file.replace(checkpoint_file)
 
 
+def _batch_requests(total: int, batch_size: int, completed: dict) -> dict[int, int]:
+    """Extend a population without replaying a previously completed partial batch."""
+    if total <= 0 or batch_size <= 0:
+        raise ValueError("Population and batch size must be positive")
+    requests = {int(key): info["patients_requested"] for key, info in completed.items()}
+    remaining = max(0, total - sum(requests.values()))
+    next_index = max(requests, default=-1) + 1
+    while remaining:
+        count = min(remaining, batch_size)
+        requests[next_index] = count
+        next_index += 1
+        remaining -= count
+    return dict(sorted(requests.items()))
+
+
 def _update_latest_symlinks(base_output_root: Path, seed_dir: Path, parquet_path: Path):
     """Point ./output/latest and ./output/parquet at the active seed directory."""
     try:
@@ -88,6 +103,7 @@ def main(
     no_claims: bool = False,
     threads: int = 10,
     reset: bool = False,
+    transfers_output: str = None,
 ) -> int:
     repo_root = Path(__file__).resolve().parent
     base_output_root = repo_root / "output"
@@ -159,6 +175,8 @@ def main(
 
     state["total_target"] = total_patients
     state["batch_size"] = batch_size
+    batch_requests = _batch_requests(total_patients, batch_size, completed_batches)
+    num_batches = len(batch_requests)
 
     convert_mod = _load_convert_module()
     pipeline_start = time.time()
@@ -173,9 +191,8 @@ def main(
     print(f"Clinical notes:    {'enabled' if include_notes else 'disabled'}")
     print(f"Parquet output:    {parquet_path.resolve()}")
 
-    for batch_idx in range(num_batches):
+    for batch_idx, batch_patients in batch_requests.items():
         batch_key = str(batch_idx)
-        batch_patients = min(batch_size, total_patients - batch_idx * batch_size)
         batch_seed = seed + batch_idx * 1000003
 
         if batch_key in completed_batches:
@@ -295,6 +312,10 @@ def main(
     print(f"Raw files on disk:  0.00 MB (cleaned after every batch)")
     print(f"Elapsed time:       {total_elapsed:.1f}s")
     print(f"Checkpoint file:    {checkpoint_file}")
+    if transfers_output:
+        from scripts.process_transfers import run as process_transfers
+
+        print(json.dumps(process_transfers(parquet_path, Path(transfers_output)), indent=2))
     return 0
 
 
@@ -368,6 +389,10 @@ if __name__ == "__main__":
         help="Max CPU threads/cores to use for Synthea and DuckDB (default: 10)",
     )
     parser.add_argument(
+        "--transfers-output",
+        help="Publish an incremental hospital-transfer dataset at this separate path after generation",
+    )
+    parser.add_argument(
         "--reset",
         action="store_true",
         default=False,
@@ -389,5 +414,6 @@ if __name__ == "__main__":
             no_claims=args.no_claims,
             threads=args.threads,
             reset=args.reset,
+            transfers_output=args.transfers_output,
         )
     )

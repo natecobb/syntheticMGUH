@@ -25,6 +25,10 @@ from argparse import ArgumentParser
 from dateutil import parser as date_parser
 import duckdb
 import pandas as pd
+from scripts.transfer_signals import extract_signals
+from scripts.patient_identity import allocate_ssns
+from scripts.note_identity import filter_notes_before_launch
+from scripts.parquet_publication import publish as publish_parquet, recover as recover_parquet
 
 
 def _dir_size_mb(path: Path) -> float:
@@ -69,6 +73,7 @@ def main(
 
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
+    recover_parquet(output_path)
 
     # Keep ./output/parquet symlinked to the active seed's parquet folder
     base_out = Path("./output").resolve()
@@ -294,6 +299,7 @@ def main(
                 """)
 
             note_rows = []
+            signal_rows = []
             for i, file_path in enumerate(notes_files, 1):
                 if i % 250 == 0:
                     print(f"  Processed {i}/{len(notes_files)} files...")
@@ -313,12 +319,19 @@ def main(
                     if note_date[:10] < launch_date_prefix:
                         continue
                     note_text = note_text.strip()
+                    note_text, extracted_signals = extract_signals(note_text)
+                    for signal in extracted_signals:
+                        signal_rows.append((patient_id, note_date, signal["policy"],
+                                            signal["recognized_at"], signal["source_code"]))
                     if not note_text:
                         continue
                     note_rows.append((patient_id, note_date, note_text))
 
             _flush_notes(note_rows)
             note_rows = []
+            removed = filter_notes_before_launch(con, launch_date_prefix)
+            if removed:
+                print(f"  Removed {removed:,} notes before the New York EHR launch boundary")
 
             raw_note_count = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
             if raw_note_count > 0:
@@ -352,6 +365,22 @@ def main(
 
             note_count = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
             print(f"  ✓ Loaded {note_count:,} clinical notes linked to encounters")
+            con.execute("""CREATE OR REPLACE TABLE transfer_signals (
+                id VARCHAR, patient VARCHAR, encounter VARCHAR, policy VARCHAR,
+                recognized_at TIMESTAMPTZ, source_code VARCHAR, signal_source VARCHAR)""")
+            if signal_rows:
+                signal_frame = pd.DataFrame(signal_rows, columns=["patient", "note_start", "policy", "recognized_at", "source_code"])
+                con.register("_transfer_signal_rows", signal_frame)
+                con.execute("""INSERT INTO transfer_signals
+                    SELECT DISTINCT sha256(concat_ws('|', s.patient, e.id, s.policy, s.recognized_at, s.source_code)),
+                        s.patient, e.id, s.policy, CAST(s.recognized_at AS TIMESTAMPTZ),
+                        s.source_code, 'synthea_condition_onset'
+                    FROM _transfer_signal_rows s JOIN encounters e ON s.patient = e.patient
+                        AND date_trunc('second', CAST(s.note_start AS TIMESTAMPTZ)) = date_trunc('second', e.start)
+                    WHERE e.encounterclass IN ('emergency', 'inpatient')
+                    QUALIFY row_number() OVER (PARTITION BY s.patient, s.note_start, s.policy, s.recognized_at, s.source_code ORDER BY e.id) = 1
+                """)
+                con.unregister("_transfer_signal_rows")
         else:
             print(f"  ⚠ Notes directory not found: {notes_path}")
 
@@ -634,6 +663,16 @@ def main(
         overlap_count = con.execute("""
             SELECT COUNT(*) FROM patients WHERE id IN (SELECT id FROM _existing_patients)
         """).fetchone()[0]
+        batch_count = con.execute("SELECT count(*) FROM patients").fetchone()[0]
+        if batch_count and overlap_count == batch_count:
+            # Retry after publication but before the generation checkpoint. Do not
+            # add the same organizations/providers/payers counters a second time.
+            con.close()
+            if cleanup:
+                for directory in ("csv", "notes", "symptoms", "metadata"):
+                    shutil.rmtree(synthea_root / directory, ignore_errors=True)
+            print(f"  All {batch_count:,} patients already published; keeping Parquet unchanged.")
+            return
         if overlap_count > 0:
             print(f"  Deduplicating {overlap_count:,} overlapping patients from batch...")
             con.execute("DELETE FROM patients WHERE id IN (SELECT id FROM _existing_patients)")
@@ -642,21 +681,15 @@ def main(
                 ("claims_transactions", "patientid"), ("conditions", "patient"), ("devices", "patient"),
                 ("encounters", "patient"), ("imaging_studies", "patient"), ("immunizations", "patient"),
                 ("medications", "patient"), ("observations", "patient"), ("payer_transitions", "patient"),
-                ("procedures", "patient"), ("supplies", "patient"), ("symptoms", "patient"), ("notes", "patient")
+                ("procedures", "patient"), ("supplies", "patient"), ("symptoms", "patient"), ("notes", "patient"),
+                ("transfer_signals", "patient")
             ]:
                 if con.execute(f"SELECT table_name FROM information_schema.tables WHERE table_schema='main' AND table_name='{tbl}'").fetchone():
                     con.execute(f"DELETE FROM {tbl} WHERE {pcol} IN (SELECT id FROM _existing_patients)")
 
-        # Prevent cross-batch SSN collisions (Synthea only deduplicates SSNs within a single JVM run)
-        con.execute("""
-            UPDATE patients
-            SET ssn = FORMAT(
-                '999-{:02d}-{:04d}',
-                10 + (ABS(HASH(id)) % 90),
-                1000 + ((ABS(HASH(id)) // 90) % 9000)
-            )
-            WHERE ssn IN (SELECT ssn FROM _existing_patients)
-        """)
+        # Reserve existing and incoming values before deterministic allocation.
+        changed_ssns = allocate_ssns(con, "_existing_patients")
+        print(f"  Resolved {len(changed_ssns):,} synthetic SSN collisions")
 
         # 1. Merge codes dictionary
         codes_pq = output_path / "codes.parquet"
@@ -805,6 +838,9 @@ def main(
             print(f"  {table_name:22s}: +{batch_cnt:,} rows → {total_cnt:,} total")
 
         con.execute("DROP TABLE IF EXISTS _existing_patients")
+    else:
+        changed_ssns = allocate_ssns(con)
+        print(f"  Resolved {len(changed_ssns):,} synthetic SSN collisions")
 
     print(f"\n{'='*60}")
     print("EXPORTING TO PARQUET")
@@ -839,9 +875,10 @@ def main(
         """)
         staged_files.append((table_name, tmp_file, parquet_file))
 
-    # Atomically swap all staged Parquet files into place
+    # A journal lets a retry finish all files before reading append inputs.
+    # The derived hospital-transfer dataset uses a single atomic snapshot pointer.
+    publish_parquet(output_path, staged_files)
     for table_name, tmp_file, parquet_file in staged_files:
-        tmp_file.replace(parquet_file)
         file_size_mb = parquet_file.stat().st_size / (1024 * 1024)
         row_count = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
         print(f"  ✓ {table_name:22s}: {row_count:10,d} rows → {file_size_mb:6.2f} MB")

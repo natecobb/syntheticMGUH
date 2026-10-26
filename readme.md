@@ -2,7 +2,7 @@
 
 A realistic, linked synthetic Electronic Health Record (EHR) dataset for **MedStar Georgetown University Hospital (MGUH)** and Washington, DC healthcare facilities built on [Synthea](https://github.com/synthetichealth/synthea) v4.0+.
 
-The dataset exports **22 ZSTD-compressed Parquet tables** (~58.7 MB per 1,000 living patients) with a normalized medical vocabulary and **OHDSI Athena OMOP / ICD-10-CM / HCPCS code crosswalk** (`codes.parquet`), ready for immediate querying in **DuckDB**, **Python** (`duckdb` / `polars` / `pandas`), **R**, or **Databricks Unity Catalog**.
+The dataset exports **22 core ZSTD-compressed Parquet tables**, plus optional transfer metadata (~58.7 MB per 1,000 living patients for the core dataset), with a normalized medical vocabulary and **OHDSI Athena OMOP / ICD-10-CM / HCPCS code crosswalk** (`codes.parquet`), ready for querying in **DuckDB**, **Python** (`duckdb` / `polars` / `pandas`), **R**, or **Databricks Unity Catalog**.
 
 > 📖 **Full Schema & Query Reference**: See [**`docs/DATA_DICTIONARY.md`**](docs/DATA_DICTIONARY.md) for the entity-relationship diagram, column-by-column schema definitions for all 22 Parquet tables, code normalization & crosswalk details, and copy-paste SQL/Python recipes.
 
@@ -20,13 +20,18 @@ The dataset exports **22 ZSTD-compressed Parquet tables** (~58.7 MB per 1,000 li
 
 ## Parquet Tables Overview
 
+An optional [hospital transfer postprocessor](docs/HOSPITAL_TRANSFERS.md) publishes
+a separate MGUH–MWHC acute-care dataset with linked encounters, orders and notes.
+Reruns preserve existing patients; newly added patients are processed once.
+Ambiguous recognition times are reported explicitly.
+
 All generated Parquet files are written to `./output/seed_<seed>/parquet/` (symlinked at `./output/parquet/`). See [**`docs/DATA_DICTIONARY.md`**](docs/DATA_DICTIONARY.md) for full column schemas.
 
 | Category | Parquet Tables | Primary Keys & Key Joins |
 |---|---|---|
 | **Demographics & Directory** | `patients`, `organizations`, `providers`, `payers`, `payer_transitions` | `patients.id`, `organizations.id` (`npi`), `providers.id` (`npi`), `payers.id` |
 | **Clinical Encounters & Care** | `encounters`, `conditions`, `medications`, `procedures`, `observations`, `immunizations`, `allergies`, `careplans`, `devices`, `imaging_studies`, `supplies`, `symptoms` | Linked via `patient` → `patients.id` and `encounter` → `encounters.id` |
-| **Clinical Notes** | `notes`, `notes_llm` | Linked to `encounters` via `(patient, encounter)` |
+| **Clinical Notes** | `notes`, `notes_llm` | Linked via `(patient, encounter)`; typed transfer notes and LLM checkpoints use `note_id` |
 | **Financial / Claims** | `claims`, `claims_transactions` | Linked via `patientid`, `appointmentid` → `encounters.id`, and `claimid` → `claims.id` |
 | **Vocabulary & Crosswalk** | `codes` | `(vocab, code)` — includes `description`, `omop_concept_id`, `omop_domain_id`, `icd10cm_code`, `icd10cm_description`, `hcpcs_code` |
 
@@ -93,6 +98,12 @@ uv run python 2_generate_incremental.py --total 5000 --batch_size 250 --seed 123
 # Or via positional arguments on 2_generate_data.sh (<total> <seed> <years> [batch_size]):
 ./2_generate_data.sh 5000 12345 14 250
 ```
+
+Add `--transfers-output output/transfers` to publish transfers after generation.
+For an existing population, run
+`uv run --frozen python3 scripts/process_transfers.py --input output/parquet --output output/transfers`.
+See [hospital transfers](docs/HOSPITAL_TRANSFERS.md) for recognition requirements,
+incremental/restart behavior and schema/financial semantics.
 
 | Flag (`2_generate_incremental.py`) | Default | Description |
 |---|---|---|
@@ -179,7 +190,7 @@ The existing [cirrhosis pathway](docs/CIRRHOSIS_PATHWAY.md) now sends complicati
 
 The [calibration runner](docs/LIVER_CALIBRATION.md) separately models a 25% MGUH referral share for DC-metro cases and transplantation among actual ICU entrants. The original three-cause reference cohort retains its 25% transplant target. For the integrated cirrhosis pathway, the user accepted approximately 21% after a training result of 20.74%; its fitted evaluation parameter is separate from the reference cohort's. Entry severity, incidence, mortality, and other clinical parameters remain demonstration assumptions. Existing hospital-cohort patients are not filtered through referral a second time.
 
-Clinical notes use a repository template override at `synthea/templates/notes/note.ftl` to include encounter-start timestamps. This keeps same-day emergency and inpatient notes linked to their respective encounters. The stock JAR remains unchanged; keep `synthea` first on the runtime classpath. Older date-only notes retain the converter's date-based matching behavior.
+Clinical notes use a repository template override at `synthea/templates/notes/note.ftl` to include encounter-start timestamps and exact acute-onset markers. Conversion extracts the markers into `transfer_signals.parquet` and removes them from clinical prose. This preserves transfer recognition times and links same-day emergency and inpatient notes to their respective encounters. The stock JAR remains unchanged; keep `synthea` first on the runtime classpath. Older date-only notes retain the converter's date-based matching behavior.
 
 ### Key Properties (`synthea/synthea.properties`)
 - CSV-only export (`exporter.fhir.export = false`, `exporter.csv.export = true`)

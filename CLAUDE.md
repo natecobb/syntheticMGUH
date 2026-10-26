@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Synthetic EHR dataset generation for MedStar Georgetown University Hospital (MGUH) and Washington, DC facilities using Synthea v4.0+. Exports 22 linked, ZSTD-compressed Parquet tables with a normalized code dictionary (`codes.parquet`) enriched with OHDSI Athena OMOP, ICD-10-CM, and HCPCS mappings.
+Synthetic EHR dataset generation for MedStar Georgetown University Hospital (MGUH) and Washington, DC facilities using Synthea v4.0+. Exports 22 core linked, ZSTD-compressed Parquet tables plus optional transfer metadata, with a normalized code dictionary (`codes.parquet`) enriched with OHDSI Athena OMOP, ICD-10-CM, and HCPCS mappings.
 
 - **Primary User Documentation**: [`readme.md`](readme.md)
 - **Full Schema, Crosswalk & Query Reference**: [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md)
@@ -29,7 +29,7 @@ syntheticMGUH/
 │   ├── build_athena_crosswalk.py     # Rebuild synthea/athena_code_crosswalk.parquet from Athena vocab
 │   ├── process_notes.py              # LLM clinical note rewriting with DuckDB vitals/exam/score enrichment
 │   ├── templates/                    # 10 encounter-class templates + 10 clinician voices + style_mapping.json
-│   └── test_parquet_load.py          # DuckDB/Parquet validation test suite (145 checks)
+│   └── test_parquet_load.py          # DuckDB/Parquet validation test suite (source and transfer checks)
 ├── output/                           # Generated CSV, notes, and Parquet output (gitignored)
 ├── pyproject.toml                    # Python project configuration (uv)
 ├── uv.lock                           # Python dependency lock file
@@ -44,7 +44,7 @@ syntheticMGUH/
 1. **Stock Untouched Synthea JAR (`./synthea/bin/`)**:
    - `0_setup_synthea.sh` installs an unmodified `synthea-with-dependencies.jar` and unpacks `physiology/*` into `synthea/bin/resources/`.
    - Never mutate the JAR binary directly. All module additions and overrides (`covid19.json`, `COVID-19 Immunization Module.json`, and the 15 specialty modules) live in `synthea/modules/` and are loaded at runtime via `-d ./synthea/modules`.
-   - Always include `synthea` first on the Java classpath (`-cp "synthea:synthea/bin/resources:synthea/bin/synthea-with-dependencies.jar"`) so `synthea/providers/syntheticMGUH/*.csv` resolves via `Utilities.readResource()` and `synthea/templates/notes/note.ftl` supplies precise encounter-start headers for note linkage. The template otherwise preserves the stock note body; legacy date-only exports remain readable.
+   - Always include `synthea` first on the Java classpath (`-cp "synthea:synthea/bin/resources:synthea/bin/synthea-with-dependencies.jar"`) so `synthea/providers/syntheticMGUH/*.csv` resolves via `Utilities.readResource()` and `synthea/templates/notes/note.ftl` supplies precise encounter-start headers and acute onset markers. Conversion extracts the markers into `transfer_signals` and removes them from note prose; legacy date-only exports remain readable.
    - `synthea/modules/cirrhosis.json` calls the shared liver modules for decompensation. Regenerate `synthea/modules/liver/*.json` with `uv run python scripts/build_liver_modules.py` after editing its compiler/config; see `docs/CIRRHOSIS_PATHWAY.md` for ownership and calibration limits.
 
 2. **Code Normalization & Athena Crosswalk (`3_convert_to_parquet.py`)**:
@@ -57,4 +57,9 @@ syntheticMGUH/
    - Historical records (`conditions`, `allergies`, `careplans`, `devices`, `medications`, `immunizations`) from trimmed pre-2010 encounters are reassigned to `patients.first_encounter_id` so 0 foreign-key orphans exist across all 22 tables.
 
 4. **Validation (`scripts/test_parquet_load.py`)**:
-   - Always run `uv run python scripts/test_parquet_load.py` after modifying conversion or schema logic (`145/145` checks must pass with `0` failures).
+   - Always run `uv run python scripts/test_parquet_load.py` after modifying conversion or schema logic (all applicable checks must pass with `0` failures).
+
+5. **Hospital transfers**: `scripts/process_transfers.py` publishes a separate atomic
+   snapshot after conversion. Existing patient fingerprints and policy versions are
+   immutable; added patients are processed once. See `docs/HOSPITAL_TRANSFERS.md` for
+   recognition precision, financial allocation, note identities and validation.

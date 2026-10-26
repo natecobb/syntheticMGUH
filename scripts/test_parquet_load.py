@@ -205,11 +205,11 @@ def test_synthea_4_features(con: duckdb.DuckDBPyConnection, loaded_tables: set[s
 
     # 4. Unique patient SSNs
     if "patients" in loaded_tables:
-        total_p, distinct_ssn = con.execute("SELECT COUNT(*), COUNT(DISTINCT ssn) FROM patients").fetchone()
+        total_p, distinct_ssn = con.execute("SELECT COUNT(ssn), COUNT(DISTINCT ssn) FROM patients").fetchone()
         if total_p == distinct_ssn:
             results.add_pass(f"All patient SSNs are unique ({total_p:,}/{distinct_ssn:,})")
         else:
-            results.add_warning("Duplicate patient SSNs found", f"{total_p - distinct_ssn} duplicates")
+            results.add_fail("Duplicate patient SSNs found", f"{total_p - distinct_ssn} duplicates")
 
     # 5. MedStar DC organization routing (no VA Vet Center leakage)
     if "organizations" in loaded_tables:
@@ -266,7 +266,7 @@ def test_date_filtering(
                              "Date filtering failed")
 
 
-def test_first_encounter_id(con: duckdb.DuckDBPyConnection, loaded_tables: set[str], results: TestResults):
+def test_first_encounter_id(con: duckdb.DuckDBPyConnection, loaded_tables: set[str], results: TestResults, ehr_launch_date: datetime):
     """Test that patients have first_encounter_id populated and valid."""
     print(f"\n{'='*60}")
     print("TESTING FIRST ENCOUNTER ID TRACKING")
@@ -281,14 +281,21 @@ def test_first_encounter_id(con: duckdb.DuckDBPyConnection, loaded_tables: set[s
         return
 
     results.add_pass("Column 'first_encounter_id' exists in patients")
-    total, with_id = con.execute("SELECT COUNT(*), COUNT(first_encounter_id) FROM patients").fetchone()
-    pct = (with_id / total * 100) if total > 0 else 0.0
-    if pct >= 95.0:
-        results.add_pass(f"First encounter ID populated: {with_id:,}/{total:,} ({pct:.1f}%)")
-    elif pct >= 80.0:
-        results.add_warning(f"First encounter ID populated: {with_id:,}/{total:,} ({pct:.1f}%)", "Expected >=95%")
+    # Preserve historical deceased patients, but exclude only those with neither
+    # a post-launch life nor an operational encounter from the coverage denominator.
+    cutoff = ehr_launch_date.strftime("%Y-%m-%d")
+    excluded = con.execute("""SELECT count(*) FROM patients p
+        WHERE first_encounter_id IS NULL
+        AND deathdate < timezone('America/New_York', CAST(? AS TIMESTAMP))
+        AND NOT EXISTS (SELECT 1 FROM encounters e WHERE e.patient=p.id)""", [cutoff]).fetchone()[0]
+    total, with_id = con.execute("SELECT count(*), count(first_encounter_id) FROM patients").fetchone()
+    eligible = total - excluded
+    pct = with_id / eligible * 100 if eligible else 100.0
+    detail = f"First encounter ID populated: {with_id:,}/{eligible:,} eligible patients ({pct:.1f}%); {excluded:,} died before launch without encounters"
+    if with_id == eligible:
+        results.add_pass(detail)
     else:
-        results.add_fail(f"First encounter ID populated: {with_id:,}/{total:,} ({pct:.1f}%)", "Too many patients without encounters")
+        results.add_fail(detail, f"{eligible - with_id:,} unexplained missing first encounters")
 
 
 def test_referential_integrity(con: duckdb.DuckDBPyConnection, loaded_tables: set[str], results: TestResults):
@@ -544,10 +551,18 @@ def main(
     test_primary_keys(con, loaded_tables, results)
     test_synthea_4_features(con, loaded_tables, results)
     test_date_filtering(con, loaded_tables, ehr_launch_date, results)
-    test_first_encounter_id(con, loaded_tables, results)
+    test_first_encounter_id(con, loaded_tables, results, ehr_launch_date)
     test_referential_integrity(con, loaded_tables, results)
     test_code_normalization(con, loaded_tables, keep_descriptions, results)
     test_data_quality(con, loaded_tables, results)
+    if "transfers" in loaded_tables:
+        from process_transfers import validate as validate_transfers
+
+        try:
+            validate_transfers(con)
+            results.add_pass("Hospital-transfer chronology, identities and encounter linkage")
+        except ValueError as error:
+            results.add_fail("Hospital-transfer validation", str(error))
 
     con.close()
     success = results.summary()
