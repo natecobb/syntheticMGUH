@@ -29,6 +29,10 @@ from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime, timezone
 from dateutil import parser as date_parser
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+try:
+    from .note_identity import assign_note_ids
+except ImportError:
+    from note_identity import assign_note_ids
 
 
 def estimate_tokens(text: str) -> int:
@@ -517,9 +521,11 @@ def transform_notes_pass2(
     Pass 2: Incrementally transform notes with LLM using encounter-mapped templates,
     provider-mapped voices, prefix caching, and concurrent batching.
     """
-    notes_file = Path(notes_parquet)
+    notes_file = Path(notes_parquet).resolve()  # Pin one immutable transfer snapshot.
     output_file = Path(output_parquet)
     parquet_dir = notes_file.parent
+    if (output_file.parent.resolve() / "_transfers.json").exists():
+        raise ValueError("Write LLM notes outside the immutable transfer snapshot")
 
     if not notes_file.exists():
         print(f"✗ Notes file not found: {notes_parquet}")
@@ -530,12 +536,14 @@ def transform_notes_pass2(
     print(f"{'='*60}")
 
     con = duckdb.connect(':memory:')
+    con.execute("SET TimeZone='UTC'")
 
     print(f"\nLoading notes from {notes_file}...")
     con.execute(f"""
         CREATE TABLE notes AS
         SELECT * FROM read_parquet('{notes_file}')
     """)
+    _ensure_note_identity(con, "notes")
     total_notes = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
     print(f"✓ Loaded {total_notes:,} notes")
 
@@ -615,13 +623,14 @@ def transform_notes_pass2(
                 n.patient,
                 n.date,
                 n.note_text,
-                n.note_text
-                    || COALESCE('\n\n# Encounter Reason\n' || c_reas.description, '')
+                n.note_text || CASE WHEN n.transfer_id IS NOT NULL THEN '' ELSE
+                    COALESCE('\n\n# Encounter Reason\n' || c_reas.description, '')
                     || COALESCE('\n\n# Vital Signs\n' || os.vitals_summary, '')
                     || COALESCE('\n\n# Exam Findings\n' || os.exam_summary, '')
-                    || COALESCE('\n\n# Screening Scores\n' || os.screening_summary, '')
+                    || COALESCE('\n\n# Screening Scores\n' || os.screening_summary, '') END
                     AS prompt_note_text,
                 n.encounter,
+                n.note_id, n.note_type, n.authored_at, n.author, n.transfer_id,
                 e.encounterclass,
                 e.provider AS provider_id,
                 pr.npi AS provider_npi,
@@ -642,6 +651,7 @@ def transform_notes_pass2(
                 note_text,
                 note_text AS prompt_note_text,
                 encounter,
+                note_id, note_type, authored_at, author, transfer_id,
                 NULL::VARCHAR AS encounterclass,
                 NULL::VARCHAR AS provider_id,
                 NULL::VARCHAR AS provider_npi,
@@ -655,6 +665,8 @@ def transform_notes_pass2(
             CREATE TABLE notes_llm AS
             SELECT * FROM read_parquet('{output_file}')
         """)
+        con.execute("ALTER TABLE notes_llm ALTER COLUMN date TYPE TIMESTAMPTZ")
+        _ensure_note_identity(con, "notes_llm", legacy=True)
         existing_count = con.execute("SELECT COUNT(*) FROM notes_llm").fetchone()[0]
         print(f"✓ Found {existing_count:,} existing LLM notes")
 
@@ -663,8 +675,8 @@ def transform_notes_pass2(
             SELECT ne.*
             FROM notes_enriched ne
             LEFT JOIN notes_llm llm
-              ON ne.encounter = llm.encounter
-             AND ne.patient = llm.patient
+              ON ne.note_id = llm.note_id
+             AND ne.note_text = llm.note_text
             WHERE llm.patient IS NULL
         """)
     else:
@@ -718,7 +730,8 @@ def transform_notes_pass2(
             encounterclass,
             provider_id,
             provider_npi,
-            organization_name
+            organization_name,
+            note_id, note_type, authored_at, author, transfer_id
         FROM notes_to_process
         ORDER BY patient_cohort, provider_id, encounterclass, patient, date
     """).fetchall()
@@ -746,7 +759,8 @@ def transform_notes_pass2(
     transformed_records = []
 
     def _worker(idx_and_row):
-        idx, (patient, date_str, note_text, prompt_note_text, encounter, encounterclass, provider_id, provider_npi, org_name) = idx_and_row
+        idx, row = idx_and_row
+        patient, date_str, note_text, prompt_note_text, encounter, encounterclass, provider_id, provider_npi, org_name, *identity = row
         t_path, v_path, system_prompt = style_resolver.resolve(
             encounterclass=encounterclass,
             provider_id=provider_id,
@@ -767,9 +781,9 @@ def transform_notes_pass2(
             encounterclass=encounterclass,
             provider_id=provider_id
         )
-        return idx, patient, date_str, note_text, encounter, natural_text, metadata
+        return idx, patient, date_str, note_text, encounter, natural_text, metadata, identity
 
-    def _handle_result(patient, date_str, note_text, encounter, natural_text, metadata):
+    def _handle_result(patient, date_str, note_text, encounter, natural_text, metadata, identity):
         nonlocal total_transformed, total_failed, total_input_tokens, total_output_tokens, sum_request_latency, transformed_records
         wall_elapsed = time.time() - wall_start
 
@@ -780,7 +794,8 @@ def transform_notes_pass2(
                 encounter,
                 note_text,
                 natural_text,
-                json.dumps(metadata)
+                json.dumps(metadata),
+                *identity
             ))
             total_transformed += 1
             in_tok = metadata.get("prompt_tokens_actual", 0)
@@ -816,8 +831,8 @@ def transform_notes_pass2(
 
             # Prime prefix cache on first note of first chunk if running concurrent workers
             if chunk_start == 0 and len(chunk) > 1 and concurrency > 1:
-                _, patient, date_str, note_text, encounter, natural_text, metadata = _worker((1, chunk[0]))
-                _handle_result(patient, date_str, note_text, encounter, natural_text, metadata)
+                _, patient, date_str, note_text, encounter, natural_text, metadata, identity = _worker((1, chunk[0]))
+                _handle_result(patient, date_str, note_text, encounter, natural_text, metadata, identity)
                 chunk = chunk[1:]
                 base_idx = 2
             else:
@@ -828,8 +843,8 @@ def transform_notes_pass2(
                 for i, row in enumerate(chunk, base_idx)
             ]
             for future in as_completed(futures):
-                _, patient, date_str, note_text, encounter, natural_text, metadata = future.result()
-                _handle_result(patient, date_str, note_text, encounter, natural_text, metadata)
+                _, patient, date_str, note_text, encounter, natural_text, metadata, identity = future.result()
+                _handle_result(patient, date_str, note_text, encounter, natural_text, metadata, identity)
 
             if transformed_records:
                 _write_batch_to_parquet(con, transformed_records, output_file)
@@ -850,81 +865,56 @@ def transform_notes_pass2(
     }
 
 
+def _ensure_note_identity(con, table: str, legacy: bool = False):
+    """Keep multiple notes per encounter distinct, including same-day transfer notes."""
+    fields = {"note_id": "VARCHAR", "note_type": "VARCHAR", "authored_at": "TIMESTAMPTZ",
+              "author": "VARCHAR", "transfer_id": "VARCHAR"}
+    for name, kind in fields.items():
+        con.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {name} {kind}")
+    if legacy:
+        # Old rewritten dates were truncated to DATE. Reuse only a unique exact-text
+        # match; ambiguous/stale rows must be rewritten rather than hide a new note.
+        con.execute(f"""
+            UPDATE {table} l SET note_id = n.note_id, date = n.date,
+                note_type = n.note_type, authored_at = n.authored_at, author = n.author,
+                transfer_id = n.transfer_id
+            FROM (SELECT *, count(*) OVER (PARTITION BY patient, encounter, note_text) AS matches
+                  FROM notes) n
+            WHERE l.note_id IS NULL AND n.matches = 1 AND l.patient = n.patient
+              AND l.encounter = n.encounter AND l.note_text = n.note_text
+        """)
+    else:
+        assign_note_ids(con, table)
+        con.execute(f"""UPDATE {table} SET
+            note_type = COALESCE(note_type, 'source'), authored_at = COALESCE(authored_at, date)""")
+
+
 def _write_batch_to_parquet(con, records: List[Tuple], output_file: Path):
-    """Vectorized append of transformed note records to Parquet with atomic replacement and patient progress."""
+    """Atomically checkpoint by note identity without discarding timestamp precision."""
     if not records:
         return
-
     con.execute("DROP TABLE IF EXISTS temp_batch")
-    con.execute("""
-        CREATE TABLE temp_batch (
-            patient VARCHAR,
-            date DATE,
-            encounter VARCHAR,
-            note_text VARCHAR,
-            natural_note_text VARCHAR,
-            llm_metadata VARCHAR
-        )
-    """)
-
-    con.executemany(
-        "INSERT INTO temp_batch VALUES (?, CAST(? AS DATE), ?, ?, ?, ?)",
-        records
-    )
-
-    tmp_file = output_file.parent / f".tmp_{output_file.name}"
+    con.execute("""CREATE TABLE temp_batch (
+        patient VARCHAR, date TIMESTAMPTZ, encounter VARCHAR, note_text VARCHAR,
+        natural_note_text VARCHAR, llm_metadata VARCHAR, note_id VARCHAR, note_type VARCHAR,
+        authored_at TIMESTAMPTZ, author VARCHAR, transfer_id VARCHAR)""")
+    con.executemany("INSERT INTO temp_batch VALUES (?, CAST(? AS TIMESTAMPTZ), ?, ?, ?, ?, ?, ?, ?, ?, ?)", records)
     if output_file.exists():
-        con.execute(f"""
-            CREATE TABLE existing_notes AS
-            SELECT
-                patient,
-                CAST(date AS DATE) AS date,
-                encounter,
-                note_text,
-                natural_note_text,
-                llm_metadata
-            FROM read_parquet('{output_file}')
-        """)
-        con.execute(f"""
-            COPY (
-                SELECT * FROM existing_notes
-                UNION ALL
-                SELECT * FROM temp_batch
-                ORDER BY patient, date
-            )
-            TO '{tmp_file}'
-            (FORMAT PARQUET, COMPRESSION ZSTD)
-        """)
+        con.execute("CREATE OR REPLACE TABLE existing_notes AS SELECT * FROM read_parquet(?)", [str(output_file)])
+        con.execute("ALTER TABLE existing_notes ALTER COLUMN date TYPE TIMESTAMPTZ")
+        _ensure_note_identity(con, "existing_notes", legacy=True)
+        con.execute("""INSERT INTO temp_batch BY NAME
+            SELECT e.* FROM existing_notes e
+            WHERE e.note_id NOT IN (SELECT note_id FROM temp_batch)
+              AND EXISTS (SELECT 1 FROM notes n WHERE n.note_id = e.note_id AND n.note_text = e.note_text)""")
         con.execute("DROP TABLE existing_notes")
-    else:
-        con.execute(f"""
-            COPY (SELECT * FROM temp_batch ORDER BY patient, date)
-            TO '{tmp_file}'
-            (FORMAT PARQUET, COMPRESSION ZSTD)
-        """)
-
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp_file = output_file.parent / f".tmp_{output_file.name}"
+    escaped = str(tmp_file).replace("'", "''")
+    con.execute(f"COPY (SELECT * FROM temp_batch ORDER BY patient, date, note_id) TO '{escaped}' (FORMAT PARQUET, COMPRESSION ZSTD)")
     tmp_file.replace(output_file)
-
-    stats = con.execute(f"""
-        SELECT
-            (SELECT COUNT(*) FROM read_parquet('{output_file}')) AS total_done,
-            (SELECT COUNT(*) FROM (
-                SELECT n.patient
-                FROM notes n
-                LEFT JOIN read_parquet('{output_file}') l
-                  ON n.patient = l.patient AND n.encounter = l.encounter
-                GROUP BY n.patient
-                HAVING COUNT(*) = COUNT(l.encounter)
-            )) AS patients_done,
-            (SELECT COUNT(DISTINCT patient) FROM notes) AS total_patients
-    """).fetchone()
-
-    print(
-        f"    ✓ Checkpointed +{len(records)} notes → {output_file.name} "
-        f"[Total: {stats[0]:,} notes | {stats[1]:,}/{stats[2]:,} patients 100% complete]",
-        flush=True
-    )
-    con.execute("DROP TABLE temp_batch")
+    total = con.execute("SELECT count(*) FROM temp_batch").fetchone()[0]
+    print(f"    Checkpointed {len(records)} notes; {total} current notes in {output_file.name}", flush=True)
 
 
 def main():

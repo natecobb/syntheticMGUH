@@ -6,6 +6,8 @@ These checks use the installed Synthea JAR and Java 17+ source-file execution. R
 java -cp "synthea:synthea/bin/resources:synthea/bin/synthea-with-dependencies.jar" scripts/tests/CirrhosisModuleTest.java
 java -cp "synthea:synthea/bin/resources:synthea/bin/synthea-with-dependencies.jar" scripts/tests/LiverModelTest.java
 uv run python -m unittest discover -s scripts/tests -p 'test_liver_*.py'
+uv run --frozen python3 -m unittest discover -s scripts/tests -p 'test_transfers.py'
+uv run --frozen python3 scripts/tests/transfer_export_smoke.py
 uv run python scripts/build_liver_modules.py --check
 uv run python scripts/tests/liver_export_smoke.py
 uv run python scripts/tests/run_liver_care_tests.py
@@ -29,3 +31,5 @@ uv run python scripts/tests/cirrhosis_export_smoke.py
 After each completed 4-10 month management delay, `cirrhosis.json` selects follow-up (66%), a complication encounter (10%), the disease-death state (4%), or another management delay without a clinical event (20%). The continuation branch explicitly allocates the previously missing probability, which Synthea otherwise assigned to the final death branch, making its effective selection probability 24% ([issue #2](https://github.com/natecobb/syntheticMGUH/issues/2)).
 
 The 20% continuation branch is an explicit synthetic modeling assumption that preserves the three existing branch probabilities. These values are not clinically calibrated annual rates. Follow-up may wait for a wellness encounter. The disease-death branch now waits another 1-12 months, then rechecks native cirrhosis, recipient status, and competing liver ownership before recording death. A graft received during the delay cancels this native-liver death; it is no longer an irrevocably scheduled future death. Continuing management retains the underlying cirrhosis and samples another 4-10 month delay.
+
+Transfer regression tests also cover ED recognition carried through an overlapping ICU admission, bounded stabilization waits, and deterministic SSN collision resolution that preserves existing patient identities.

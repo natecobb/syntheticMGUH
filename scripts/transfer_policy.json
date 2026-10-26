@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "acceptance_minutes": 15,
+  "preparation_minutes": 15,
+  "transport_minutes": 30,
+  "episode_gap_hours": 6,
+  "max_departure_delay_minutes": 360,
+  "hospitals": {"MGUH": "1427145176", "MWHC": "1548378235"},
+  "policies": {
+    "cardiac": {
+      "source": "MGUH", "destination": "MWHC", "service": "cardiology",
+      "condition_codes": ["22298006", "57054005"],
+      "recognition_procedure_codes": [],
+      "destination_procedure_codes": ["232717009", "429639007", "415070008"]
+    },
+    "liver": {
+      "source": "MWHC", "destination": "MGUH", "service": "transplant hepatology",
+      "condition_codes": ["197270009"],
+      "recognition_procedure_codes": ["1076381000000104"],
+      "destination_procedure_codes": ["18027006"]
+    }
+  }
+}
